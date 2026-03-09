@@ -1,0 +1,90 @@
+﻿Category,Scenario,Status,Description,Thresholds
+KYC & Customer Onboarding,KYC_Incomplete,Active,KYC pending beyond allowed days post account activation,Max_Days_Without_KYC = 7
+KYC & Customer Onboarding,PAN_Aadhaar_Mismatch,Active,PAN or Aadhaar mismatch between system records and documents,—
+KYC & Customer Onboarding,High_Risk_Misclass,Active,High transaction volume relative to income but not rated High risk,High_Txn_vs_Income_Multiple = 3
+KYC & Customer Onboarding,Duplicate_CIF,Active,Duplicate PAN or Mobile number across multiple CIFs,—
+KYC & Customer Onboarding,Dormant_Reactivation,Active,High-value transaction within 7 days of dormant account reactivation,High_Txn_After_Reactivation = 200000
+AML & Transaction Monitoring,Structuring_Cash,Active,Cash transaction near CTR reporting threshold (structuring indicator),Cash_Deposit_Threshold = 950000
+AML & Transaction Monitoring,Sanction_Bypass,Active,High-risk customer alert closed with insufficient closure notes,Min_Closure_Note_Len = 20
+AML & Transaction Monitoring,STR_Gap,Active,Suspicious transactions meet threshold but STR not filed,Min_Suspicious_Txn_Count = 3
+AML & Transaction Monitoring,CTR_Gap,Active,Cash transaction meets CTR threshold but CTR not filed,CTR_Threshold = 1000000
+AML & Transaction Monitoring,UPI_Velocity,Active,UPI transaction count exceeds threshold within 1 hour,Max_Txn_Count_1hr = 10
+AML & Transaction Monitoring,SWIFT_CBS_Mismatch,Hardcoded No,SWIFT vs CBS reconciliation (hardcoded – no breach),—
+AML & Transaction Monitoring,AML_Watchlist_NameClose,Active,High watchlist match score with insufficient closure notes,"Min_Match_Score = 85, Min_Note_Len = 25"
+Lending & Credit,Loan_Authority_Breach,Active,Loan sanction amount exceeds approver delegation limit,—
+Lending & Credit,Post_Sanction_Doc,Hardcoded No,Post-sanction document compliance check (hardcoded – no breach),—
+Lending & Credit,EMI_Bounce,Active,EMI bounce count meets or exceeds threshold,Bounce_Count_Threshold = 2
+Lending & Credit,Evergreening,Hardcoded No,Loan evergreening detection (hardcoded – no breach),—
+Lending & Credit,Collateral_Valuation,Hardcoded No,Collateral valuation check (hardcoded – no breach),—
+Lending & Credit,Loan_Topup_Delinquent,Active,Loan top-up granted when DPD meets or exceeds threshold,DPD_Threshold = 30
+Lending & Credit,NPA_Class_Delay,Active,DPD exceeds NPA cutoff but account not classified as NPA,DPD_NPA_Cutoff = 90
+Lending & Credit,LOS_Missing_Doc,Active,Loan disbursed with incomplete documents,—
+Lending & Credit,LOS_Income_Anomaly,Active,Declared income variance vs bureau income exceeds threshold,Max_Variance_Pct = 40
+Lending & Credit,LOS_RiskOverride,Active,Risk model override with insufficient reason documentation,Min_Reason_Len = 30
+Lending & Credit,Credit_Limit_Exceed,Active,Credit utilization exceeds sanctioned limit,—
+Lending & Credit,NPA_Restruct_Post90,Active,Loan restructured after DPD exceeds cutoff,DPD_Cutoff = 90
+Treasury & Markets,OffMarket_Trade,Active,Trade price deviation from market price exceeds allowed percentage,Max_Deviation_Pct = 1
+Treasury & Markets,Limit_Breach,Hardcoded No,Exposure limit breach check (hardcoded – no breach),—
+Treasury & Markets,FX_Override,Active,FX deal rate spread vs benchmark exceeds allowed percentage,Max_Spread_Pct = 0.5
+Treasury & Markets,Treasury_OffMkt_FX,Active,Treasury FX deal deviation from benchmark exceeds allowed percentage,Max_Deviation_Pct = 0.5
+Treasury & Markets,Deriv_Margin_Call_Miss,Active,Derivative margin call days past due exceeds allowed limit,Max_Days_Past_Due = 2
+Treasury & Markets,Securities_Settlement_Fail,Active,Securities settlement failure beyond allowed days,Max_Fail_Days = 1
+Operations & IT,Interest_Override,Active,Interest rate override exceeding allowed basis points,Max_Override_Bps = 50
+Operations & IT,Backdated_Opening,Active,Account creation date differs from system timestamp beyond allowed days,Max_Backdate_Days = 2
+Operations & IT,Maker_Checker,Hardcoded No,Maker-checker segregation check (hardcoded – no breach),—
+Operations & IT,Manual_JE,Active,High-value manual journal entry above threshold,High_Manual_JE_Threshold = 1000000
+Operations & IT,AfterHours_Txn,Active,Transaction processed outside business hours,Allowed_Hour_Start = 9
+Operations & IT,Privileged_Access,Hardcoded No,Privileged access monitoring (hardcoded – no breach),—
+Operations & IT,Dormant_User,Active,Active employee with no login beyond allowed dormancy period,Max_Days_Since_Login = 45
+Operations & IT,Data_Extraction,Active,Data extraction volume exceeds allowed threshold,Max_Data_Volume_MB = 200
+Operations & IT,IT_Change_Emergency_Excess,Active,Emergency IT change without CAB approval,—
+Operations & IT,IT_Priv_User_AfterHours,Active,Privileged user performing sensitive action after hours,—
+Operations & IT,GL_Recon_Stale_Items,Active,GL reconciliation items outstanding beyond allowed days,Max_Outstanding_Days = 15
+HR & Procurement,Employee_Conflict,Hardcoded No,Employee-customer conflict check (hardcoded – no breach),—
+HR & Procurement,Incentive_Manip,Active,Account close/open ratio exceeds threshold (churning indicator),Max_Close_Rate_60d = 0.25
+HR & Procurement,Vendor_Split,Hardcoded No,Vendor invoice splitting check (hardcoded – no breach),—
+HR & Procurement,Employee_Vendor_Link,Hardcoded No,Employee-vendor linkage check (hardcoded – no breach),—
+HR & Procurement,HR_Payroll_Anomaly,Active,Payroll variance exceeds allowed percentage vs 6-month average,Max_Variance_Pct = 25
+HR & Procurement,Procurement_SingleBid,Active,Single-bid procurement award above minimum PO amount,Min_PO_Amount = 500000
+HR & Procurement,Procurement_PO_Split,Active,Multiple POs on same day exceeding threshold (split suspected),Threshold = 500000
+Payments & Cards,Ben_Add_Quick_Xfer,Active,High-value transfer within hours of beneficiary addition,"Max_Hours_To_First_Txn = 24, High_Amount_Threshold = 200000"
+Payments & Cards,Fee_Reversal_High,Active,High-value fee reversal above threshold,High_Fee_Threshold = 5000
+Payments & Cards,Cash_Wdl_Spike,Active,Cash withdrawal spike vs 30-day average and minimum amount,"Spike_Multiple = 5, Min_Amount = 200000"
+Payments & Cards,Card_Issue_Velocity,Active,Multiple cards issued to same CIF within 30 days,Max_Cards_30d = 2
+Payments & Cards,Pwd_Reset_Velocity,Active,Password reset count exceeds threshold within 24 hours,Max_Resets_24h = 2
+Payments & Cards,RTGS_HighValue,Active,RTGS transaction exceeds multiple of average monthly outward,"Multiple_vs_Avg = 4, Min_Amount = 500000"
+Payments & Cards,Payments_Repeat_Reversal,Active,Payment reversal count in 30 days exceeds allowed limit,Max_Reversal_Count_30d = 3
+Payments & Cards,NEFT_Return_HighRate,Active,NEFT return rate exceeds allowed maximum,Max_Return_Rate = 0.03
+Payments & Cards,IMPS_Dup_RefID,Active,Duplicate IMPS reference ID detected,—
+Payments & Cards,UPI_Chargeback_Spike,Active,UPI dispute rate exceeds allowed maximum,Max_Dispute_Rate = 0.01
+Payments & Cards,Cards_Multiple_Declines,Active,Card decline velocity exceeds threshold per hour,Max_Declines_1h = 5
+Payments & Cards,Cards_Chargeback_Spike,Active,Merchant chargeback rate exceeds allowed maximum,Max_Chargeback_Rate = 0.01
+Payments & Cards,Digital_New_Device_HighValue,Active,High-value transaction from new device with suspicious geo distance,"High_Amount = 200000, Max_Geo_Distance_KM = 300"
+Payments & Cards,UPI_Beneficiary_Name_Mismatch,Active,UPI beneficiary name mismatch with high-value transaction,Min_Amount = 50000
+Branch & Customer Service,Addr_Change_NoOTP,Active,High-risk customer address change without OTP verification,—
+Branch & Customer Service,Complaint_Aging,Active,Customer complaint open beyond SLA days,Max_Open_Days = 7
+Branch & Customer Service,Branch_Teller_Override_Spike,Active,Teller override spike vs 30-day average,Spike_Multiple = 3
+Branch & Customer Service,Branch_Sales_MisSell,Active,Branch complaint-to-sales rate exceeds allowed maximum,Max_Complaint_Rate = 0.02
+Branch & Customer Service,RM_KYC_Bypass,Active,High transactions with incomplete KYC under RM supervision,Min_Txn_7d = 200000
+Branch & Customer Service,CrossSell_Unauth_Debit,Active,Cross-sell product debit without customer consent,—
+Branch & Customer Service,CMS_CashPickup_Miss,Active,CMS cash pickup variance exceeds allowed tolerance,Max_Variance = 5000
+Branch & Customer Service,Merchant_Onb_DocGap,Active,Merchant onboarding with incomplete docs or MDR override,Max_MDR_Override_Pct = 0.3
+Collections & Recovery,Collections_DPD_Promise_Broken,Active,Promise to pay broken for accounts with DPD above threshold,Min_DPD = 30
+Collections & Recovery,Coll_Restructure_Velocity,Active,Restructure count in 12 months exceeds allowed limit,Max_Restructure_12m = 1
+Collections & Recovery,Recovery_Legal_Delay,Active,Legal recovery stage exceeding target days,—
+Collections & Recovery,Repo_Auction_PriceLow,Active,Repo auction sale discount exceeds allowed percentage,Max_Discount_Pct = 25
+Trade Finance,TradeFinance_LC_Expired_Ship,Active,Shipment date after LC expiry date,—
+Trade Finance,TradeFinance_Doc_Discrepancy,Active,Unresolved LC document discrepancy beyond allowed days,Max_Open_Days = 5
+Reconciliation & Finance,Suspense_Aging,Active,Suspense account entries outstanding beyond allowed days,Max_Outstanding_Days = 30
+Reconciliation & Finance,Revenue_Timing,Hardcoded No,Revenue timing recognition check (hardcoded – no breach),—
+Reconciliation & Finance,Nostro_Aging_Breaks,Active,Nostro reconciliation breaks outstanding beyond allowed days,Max_Outstanding_Days = 7
+Reconciliation & Finance,Switch_ATM_Recon_Gap,Active,ATM switch vs CBS reconciliation variance exceeds tolerance,Max_Variance = 5000
+Reconciliation & Finance,Nostro_Recon_Gap,Active,Nostro reconciliation variance exceeds allowed tolerance,Max_Variance = 10000
+Reconciliation & Finance,ATM_Cash_Replenish_Variance,Active,ATM cash replenishment variance exceeds allowed limit,Max_Variance = 5000
+Reconciliation & Finance,Cash_Variance,Active,Cash variance between system and physical count exceeds limit,Max_Variance = 5000
+Other Lending,SME_GST_Turnover_Gap,Active,Gap between GST and declared turnover exceeds allowed percentage,Max_Gap_Pct = 30
+Other Lending,Agri_KCC_Overdrawn,Active,KCC account overdrawn beyond allowed excess percentage,Max_Excess_Pct = 10
+Other Lending,LMS_Disb_No_Insurance,Active,Loan disbursed without required active insurance,—
+Other Lending,Collateral_LTV_Breach,Active,Loan-to-value ratio exceeds allowed maximum,Max_LTV = 80
+Other Lending,Valuation_Stale,Active,Collateral valuation older than allowed days,Max_Days_Since_Val = 180
+Other Lending,Cheque_Return_Spike,Active,Cheque returns in 90 days exceed allowed count,Max_Returns_90d = 3
