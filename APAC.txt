@@ -1,0 +1,48 @@
+remove the ui layer 
+remove the frontend dependency
+api endpoint - GET endpoint - pass information 
+
+2 payloads - 1 excel where we upload bulk long and lats 
+real time - 1 lat & long - multiple api 
+
+host internal systems 
+no rate limiters
+nginx proxy- rate limiters 
+
+
+LOS - their side integration 
+
+
+1 enpoint - takes lat & long and returns output as zip(client_time&date) 
+api - fastapi. 
+1 endpoint - with well defeined schema with lat & long with fastapi 
+
+
+code - maintain 
+docker compose yaml - create images - global dependencies 
+start server :8000- expose application 
+run as the backend service (gunicorn) (configure workers)
+
+
+
+create and eveyrything in githb=ub - share url - clone - docker compose (they will run) - service start 
+docker compose stop - terminate
+
+service url - LOS integrated
+
+deploy - localhost:XXXX 
+deploy - not localhost 
+ip address of Linux - url_localhost_enpdoint 
+xxx.xxx.xxx.x/1234/endpoint/data
+
+
+allow origins as *
+CORS
+
+
+swagger - tes
+
+
+
+
+
