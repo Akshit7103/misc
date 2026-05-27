@@ -1,0 +1,26 @@
+response for get call for email for graph api (json)
+mock service -> gives response -> similar to graph api and utilize it 
+
+
+mock api service -> replicates the response for graph api_. keep same json fields 
+create responess
+
+utlize endpoint -> necessary logs-> developer logs and how is it being done  (logical change requires can look can change) - audit logs as well 
+
+
+
+convert everything to fastapi endpoint 
+
+
+take email service data and return endpoint )positive or negative / success or failure
+
+
+create every modules as endpoint 
+fastapi endpoint 
+
+
+
+create a GitHub repo - dev interaction
+granular permissions 
+
+
