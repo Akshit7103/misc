@@ -1,6 +1,0 @@
-Will the deployment server have outbound internet access?
-Will the deployment be local or on cloud 
-Is calling a third-party AI service (OpenAI) from inside your network permitted? If not, do you have a private/internal LLM (e.g. Azure OpenAI in your own tenant) we should target instead, or should we disable these two AI features for your deployment?
-What is the hosting target — a dedicated VM / physical server, or a container platform (Docker / Kubernetes / OpenShift)? And which OS: Windows Server or Linux?
-What server resources are available — CPU cores, RAM, and disk?
-How many concurrent users do you expect, and what are the typical data volumes (file sizes and row counts)?
