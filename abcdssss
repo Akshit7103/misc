@@ -1,0 +1,176 @@
+---
+marp: true
+theme: default
+paginate: true
+title: Gap Analysis Tool
+---
+
+# Gap Analysis Tool
+
+### AI-Powered Regulatory Compliance Assessment
+
+Benchmarking organizational policies against the
+**IIA Global Internal Audit Standards 2024**
+
+<br>
+
+*Hybrid retrieval · LLM reasoning · Live dashboard · Audit-ready reports*
+
+---
+
+## The Problem
+
+- Internal-audit teams must prove their policies **comply** with regulatory standards.
+- Doing this by hand means **reading hundreds of pages**, mapping each requirement to policy text, and judging coverage line by line.
+- It is **slow, inconsistent, and hard to audit** — two reviewers reach two different conclusions.
+
+> How well does *our* policy actually satisfy *each* standard — and where are the gaps?
+
+---
+
+## The Solution
+
+A web tool that, in minutes:
+
+1. Ingests a policy / procedure document (PDF or DOCX)
+2. Compares it against **52 pre-extracted IIA requirements**
+3. Uses an LLM to score coverage at **three layers** (Intent → Requirement → Operational)
+4. Produces a **live dashboard** plus **Excel & PDF** gap reports with suggested rewrites
+
+---
+
+## One-Line Summary
+
+> A FastAPI web tool that uses LLM-powered hybrid retrieval to score how well a policy document satisfies the IIA Global Internal Audit Standards, with a live dashboard and Excel/PDF gap reports.
+
+---
+
+## How It Works — Pipeline
+
+```
+Upload policy (PDF/DOCX)
+        │
+   1. Parse        → structured policy chunks (+ overlap context)
+   2. Index        → FAISS (semantic) + BM25 (keyword)
+   3. Retrieve     → top-8 chunks per requirement, reranked
+   4. Analyze      → GPT-4o scores L1 / L2 / L3 + gaps + rewrite
+   5. Aggregate    → overall score, charts, Excel / PDF report
+        │
+   Live results streamed to the browser (SSE)
+```
+
+---
+
+## The Scoring Model (L1 / L2 / L3)
+
+| Layer | Question | Weight |
+|-------|----------|--------|
+| **L1 — Intent** | Is the regulatory concept acknowledged? | 30% |
+| **L2 — Requirement** | Are *all* specific elements addressed? | 40% |
+| **L3 — Operational** | Is there a real control / process / enforcement? | 30% |
+
+**Status rules**
+- `L1 = No` → **Not Satisfied**
+- `L1 = L2 = L3 = Yes` → **Fully Satisfied**
+- Otherwise → **Partially Satisfied**
+
+> The final score is **computed deterministically** from the layers — not taken from the LLM's whim.
+
+---
+
+## Why Hybrid Retrieval
+
+Finding the *right* policy text for each requirement is the hard part.
+
+- **FAISS (vector / semantic)** — catches paraphrases & meaning *(weight 0.6)*
+- **BM25 (keyword)** — catches exact terms & clause numbers *(weight 0.4)*
+- **Cross-encoder reranker** — re-orders candidates for precision
+- **Heuristic reranker** — zero-dependency fallback
+
+Result: higher recall **and** precision than either method alone.
+
+---
+
+## Key Features
+
+- 📄 **One-click upload** — PDF / DOCX, with magic-byte validation
+- ⚡ **Live progress** — per-requirement results stream in real time
+- 🎯 **Confidence scoring** — flags low-certainty assessments
+- 💡 **Suggested rewrites** — LLM proposes policy wording to close each gap
+- 🔌 **Pluggable LLM** — OpenAI GPT-4o (cloud) or Ollama Mistral (local)
+- ♻️ **Smart caching** — re-analyzing a document skips parse + embed
+- 📊 **Exports** — formatted Excel (Dashboard + Detailed + Summary) and PDF
+
+---
+
+## The Dashboard
+
+- **Metric cards** — overall score, fully / partially / not satisfied
+- **Charts** — compliance distribution + per-requirement scores
+- **Detailed table** — filter, search, sort; expandable text
+- **Side-by-side modal** — regulation vs. matched policy, with evidence trail
+- **Session history** — revisit and compare past analyses
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Backend** | FastAPI · Uvicorn · Pydantic |
+| **LLM** | OpenAI GPT-4o / Ollama Mistral |
+| **Retrieval** | FAISS · rank-bm25 · sentence-transformers |
+| **Embeddings** | OpenAI `text-embedding-3-small` / TF-IDF fallback |
+| **Parsing** | pdfplumber · python-docx |
+| **Reports** | openpyxl (Excel) · fpdf2 (PDF) |
+| **Frontend** | Vanilla JS · Chart.js |
+
+---
+
+## Architecture
+
+```
+Browser (HTML + JS)
+   │  /api/upload   → store document
+   │  /api/analyze  → Server-Sent Events stream
+   ▼
+FastAPI backend
+   ├── parser.py        document → chunks
+   ├── embeddings.py    pluggable vector backend
+   ├── retrieval.py     FAISS + BM25 hybrid
+   ├── reranker.py      cross-encoder / heuristic
+   ├── analyzer.py      L1/L2/L3 LLM reasoning
+   ├── reporter.py      Excel + PDF generation
+   └── cache.py         persistent index cache
+```
+
+---
+
+## Sample Output
+
+**Overall Compliance Score: 64%**
+
+| Reg ID | Standard | L1 | L2 | L3 | Status | Score |
+|--------|----------|----|----|----|--------|-------|
+| STD-1.1 | Honesty & Professional Courage | ✅ | ⚠️ | ✅ | Partially Satisfied | 70% |
+| STD-2.1 | Independence | ✅ | ✅ | ✅ | Fully Satisfied | 100% |
+| STD-9.1 | Strategic Planning | ❌ | ❌ | ❌ | Not Satisfied | 0% |
+
+*Each row includes identified gaps, rationale, and a suggested rewrite.*
+
+---
+
+## Roadmap
+
+- **Quality** — structured JSON outputs, evidence citations, low-confidence flagging
+- **Performance** — batch query embeddings, warm reranker at startup
+- **Reliability** — request timeouts, robust parse-failure handling, unit tests
+- **Product** — pluggable benchmarks, Claude provider, SQLite persistence, Docker
+
+---
+
+# Thank You
+
+### Gap Analysis Tool
+
+*Turning weeks of manual compliance review into minutes.*
