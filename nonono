@@ -1,0 +1,12 @@
+  - Separate Dev, Test (UAT) and Live environments — we build and try changes safely, the testing team validates, then
+  it goes live. A single switch configures each, so a change can't accidentally hit the live system.
+  - Secure login — only authorized users get in (token-based); passwords are never stored or written to logs; the live
+  system refuses to start if it's set up insecurely.
+  - Solid, standard engineering — the code was reorganized into an industry-standard structure so the team can work on
+  it safely and onboard quickly, with 80 automated tests confirming nothing breaks.
+  - Full activity tracking + a monitoring dashboard — every action is recorded, viewable on a live dashboard, and the
+  system automatically alerts the team if a serious error happens — so problems are caught and fixed fast, not
+  discovered by users.
+  - Clean error handling — users see friendly messages; engineers get the full technical detail behind the scenes.
+  - Self-managing logs — records are searchable by a tracking ID and rotate automatically so files never grow out of
+  control.
