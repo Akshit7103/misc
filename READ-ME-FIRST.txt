@@ -1,0 +1,18 @@
+﻿FX Compare & Match - split transfer (3 parts)
+==============================================
+Each fxcm-part-NN.zip is under 59 KB (email-safe) and self-contained.
+
+RESTORE on the target laptop:
+1. Put ALL fxcm-part-*.zip in one empty folder.
+2. Extract EVERY part into the SAME folder ("Extract Here" on each). They merge
+   into one project tree (src\, package.json, now.config.json, ...).
+3. In that folder run:
+     npm install
+     now-sdk auth --add https://dev413550.service-now.com
+     now-sdk build
+     now-sdk install --auth dev
+
+Notes:
+- node_modules / target / dist / package-lock.json are NOT included
+  (npm install and now-sdk build recreate them).
+- Prereqs first: Node.js 22 + '@servicenow/sdk' (see REQUIREMENTS.md inside).
