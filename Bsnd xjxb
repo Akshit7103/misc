@@ -1,1 +1,107 @@
-eWx6RcXlMSth6BdiLPHlvaOaPXRvf4OqY36uwJDqgwR4A0Mz#0n8KE7W8o6jQU6B-zcO76ORdugIadR76L_Fvql3eQIY
+Manager: 
+
+Screen1: 
+
+Using Login Credentials, SSO sign on, RBAC 
+
+Manager lands on the Onboarding Wizard Page, 
+
+Search- using API, the manager can search for all the workdrivers created 
+
+Workdriver- i/p the name of workdriver from the list called by API/ workdrivers. 
+
+Activity- assigned activity from the list of Agents  
+
+New wizard- helps create a new wizard, with a 4step process. 
+
+Show 2 divisions for published & unpublished workdrivers separately. 
+
+On selecting the workdriver, the wizard name gets populated:OTC allege Wizard(from DB) 
+
+BU name Activity/Agent to be used – already populated  
+
+Mailbox- from the pre-populated fields & target system- 
+
+Description: 
+
+ 
+
+Comparison result – is a dummy data for reference & shown capabilities of any random trade. 
+
+Option provided here are : Edit – api to update/modify  
+
+Creation of New Wizard: 
+
+On click of New Wizard- api/new wizard create 
+
+Create a wizard based on New Wizard or copy existing wizard.- populate using api 
+
+All the workdrivers are populated based on API/workdrivers.(select any one option). 
+
+Start button to start the workflow for creation.  
+
+Wizard Builder:  
+
+1) Under “Define” –  
+
+Name , Description, BU, Sub BU, Activity,workdriver is provided. 
+
+Name is mandatory, along with Activity. 
+
+Workflow- Need to check 
+
+ 
+
+2)Input Sources: 
+
+Input Format: list of all the formats allowed 
+
+Frequency: hourly,daily, monthly,yearly 
+
+Mailbox: address configured i/p to be captured in DB. 
+
+E-mail Identification rules: 
+
+Email identification (mandatory field)  
+
+Context of email to filter: use of context parser, called by graphAPI 
+
+Keyword Present: to be stored in DB, used by agent to perform actions. 
+
+Subject Line: FX ops Settlement 
+
+Specific sender to filter: xx@bank1.com 
+
+Exclusion mails: OOO, irrelevant mails 
+
+On clicking Next, it gets saved and moved to next point 
+
+ 
+
+Input Fields: 
+
+ Retrieve the fields from DB and map it to the target system using the trade fields 
+
+Map properly from the drill down filters 
+
+Click next, to save progress and move to step 4 
+
+Review- 
+
+Shows all the fields created based on the last 4 steps. 
+
+History activity pops up. 
+
+Create a function to : Show assign users. 
+
+On clicking Run, the workflow is created. It also get populated with a version. 
+
+Back button is provided for the user to always go back. 
+
+ 
+
+Dashboard: 
+
+Widgets 
+
+Unactioned items by Analyst- populated by API call of each analyst and there total pending items, oldest alert based on activity, total elapsed for the items and action for manager(nudge). 
