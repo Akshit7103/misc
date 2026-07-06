@@ -1,0 +1,43 @@
+Admin 
+
+ 
+
+Based on RBAC, admin opens up to dashboard. 
+
+Widgets- i/p from database/API 
+
+Currently active users: 
+
+Status- get last seen or active based on platform login or status message. 
+
+Role – from the DB or api/UserGroup/Analyst 
+
+Last status- activity the analyst is recently working on 
+
+Time logged-  
+
+ 
+
+Admin Panel: 
+
+LLM – user LLM- select Model – toggle on/off 
+
+API key Status 
+
+ 
+
+AI agent Config: 
+
+Agent enabled 
+
+Access Matrix: 
+
+All the widgets are populated and the changes are saved based on the toggle buttons. 
+
+User Management: 
+
+Existing users are pulled in from database. 
+
+Admin can select the role and change status of each of the roles. 
+
+Click on “save “ to save changes. 
