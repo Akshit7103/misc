@@ -1,0 +1,72 @@
+# Nomura SSG Email Agent — backend dependencies
+# ---------------------------------------------------------------------------
+# Requires: Python 3.11+  (developed on 3.13)
+#
+#   python -m venv .venv
+#   .venv\Scripts\activate            # Windows
+#   source .venv/bin/activate         # macOS/Linux
+#   pip install -r requirements.txt
+# ---------------------------------------------------------------------------
+
+# --- Web / API -------------------------------------------------------------
+fastapi>=0.115.0            # HTTP API + mock Graph service
+uvicorn[standard]>=0.30.0   # ASGI dev server (prod uses gunicorn workers)
+python-multipart>=0.0.9     # form parsing (OAuth2 token endpoint, login form)
+
+# --- Config ----------------------------------------------------------------
+pydantic>=2.9.0             # models / validation (ships with fastapi)
+pydantic-settings>=2.4.0    # ENV_MODE-driven Settings from .env
+
+# --- Security / auth -------------------------------------------------------
+python-jose[cryptography]>=3.3.0   # JWT create/decode (HS256)
+passlib[bcrypt]>=1.7.4             # password hashing
+
+# --- Data / persistence ----------------------------------------------------
+# Minimal-today keeps the stdlib-sqlite case index (app/crud). SQLAlchemy +
+# Alembic are pinned now so the prod data layer drop-in needs no new installs.
+SQLAlchemy>=2.0.0
+alembic>=1.13.0
+
+# --- Connectors / extraction ----------------------------------------------
+httpx>=0.27.0              # GraphConnector HTTP client (also used by tests)
+openpyxl>=3.1.0           # .xlsx attachment + golden-source extraction
+
+# --- Docs ------------------------------------------------------------------
+sphinx>=7.0.0             # developer API docs (autodoc + napoleon)
+sphinx-rtd-theme>=2.0.0
+
+# --- Testing ---------------------------------------------------------------
+pytest>=8.2.0
+
+# --- PDF / image attachment OCR --------------------------------------------
+# Extracts trades from snapshot/image PDFs (no text layer) via
+# app/services/agent/pdf_extractor.py. paddlepaddle is a large wheel, and
+# PaddleOCR downloads its models on the first OCR call (needs internet once,
+# then cached under ~/.paddlex). No system binaries needed (no Tesseract/poppler).
+# The pipeline degrades gracefully if these are removed.
+pymupdf==1.26.6            # render PDF pages to images (PyMuPDF / fitz)
+paddleocr==3.3.2          # OCR engine
+paddlepaddle==3.2.0       # PaddleOCR backend (CPU)
+
+# --- Future (Phase 2 attachment extractor) ---------------------------------
+# python-docx>=1.1.0      # .docx reading
+
+
+# ===========================================================================
+# SYSTEM PREREQUISITES  (NOT pip-installable — install manually on the machine)
+# ===========================================================================
+# The lines above are Python packages (pip install -r requirements.txt). The
+# runtimes below can't live in a pip file, but are listed here so this file is a
+# single complete reference of everything the project needs.
+#
+#   Git                 clone the repo                      -> git-scm.com
+#   Python  3.11+       backend + venv (tested 3.13.7)      -> python.org
+#   Node.js >= 18.17    frontend / Next.js 14 (tested 22.18)-> nodejs.org
+#   npm                 ships with Node (tested 10.9)
+#   Docker Desktop      OPTIONAL — monitoring stack only (Loki/Grafana)
+#
+# Frontend Node packages are declared in frontend/package.json:
+#   cd frontend && npm install
+#
+# No other system software needed — no Tesseract, no poppler, no C compiler
+# (PyMuPDF + PaddleOCR are pure pip wheels). See SETUP.md for full instructions.
