@@ -1,0 +1,2472 @@
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import {
+  Box, Typography, Paper, TextField, Button,
+  FormControlLabel, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, Chip, Alert,
+  CircularProgress, Stack, IconButton, Dialog,
+  DialogTitle, DialogContent, DialogActions,
+  InputAdornment, Select, MenuItem, Checkbox, Divider,
+  FormControl, InputLabel, ListItemText,
+  Tab, Tabs, LinearProgress, Stepper, Step, StepLabel, Tooltip, Badge,
+} from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DownloadIcon from '@mui/icons-material/Download';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import EditIcon from '@mui/icons-material/Edit';
+import SaveIcon from '@mui/icons-material/Save';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import RefreshIcon from '@mui/icons-material/Refresh';
+//import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
+import SyntaxHighlighter from 'react-syntax-highlighter';
+import { atomOneDark } from 'react-syntax-highlighter/dist/cjs/styles/hljs';
+import { DataGrid } from '@mui/x-data-grid';
+import api from '../utils/api';
+import { notifySuccess, notifyError, notifyWarning, notifyInfo } from '../utils/notify';
+
+const DELIMITER_OPTIONS = [
+  { value: 'tab', label: 'Tab' },
+  { value: 'comma', label: 'Comma (,)' },
+  { value: 'pipe', label: 'Pipe (|)' },
+  { value: 'semicolon', label: 'Semicolon (;)' },
+];
+
+// ---------------------------------------------------------------------------
+// Rule Definitions - all 14 rule types with typed parameters
+// ---------------------------------------------------------------------------
+const RULE_DEFINITIONS = {
+  matchColumn: {
+    xmlTag: 'matchColumn', label: 'Match Column', category: 'Comparison',
+    description: 'Compare column values across all rows in match group',
+    params: [
+      { name: 'columnId', label: 'Column', type: 'column', mandatory: true },
+      { name: 'type', label: 'Data Type', type: 'select', mandatory: false, options: ['', 'Float'] },
+      { name: 'epsilon', label: 'Epsilon (tolerance)', type: 'number', mandatory: false },
+    ],
+  },
+  compareNetBySideRule: {
+    xmlTag: 'compareNetBySideRule', label: 'Compare Net By Side', category: 'Comparison',
+    description: 'Sum values per side, compare difference against delta',
+    params: [
+      { name: 'columnId', label: 'Column', type: 'column', mandatory: true },
+      { name: 'delta', label: 'Delta (tolerance)', type: 'number', mandatory: true },
+    ],
+  },
+  compareNetByAllSideRule: {
+    xmlTag: 'compareNetByAllSideRule', label: 'Compare Net All Sides', category: 'Comparison',
+    description: 'Sum values across all rows, check absolute sum < sigma',
+    params: [
+      { name: 'columnId', label: 'Column', type: 'column', mandatory: true },
+      { name: 'sigma', label: 'Sigma (tolerance)', type: 'number', mandatory: true },
+      { name: 'isDependentFlag', label: 'Dependent Flag', type: 'boolean', mandatory: false },
+    ],
+  },
+  compareWeightedAverageBySideRule: {
+    xmlTag: 'compareWeightedAverageBySideRule', label: 'Weighted Average By Side', category: 'Comparison',
+    description: 'Compare weighted average (price*qty/total) across sides',
+    params: [
+      { name: 'priceColumnId', label: 'Price Column', type: 'column', mandatory: true },
+      { name: 'quantityColumnId', label: 'Quantity Column', type: 'column', mandatory: true },
+      { name: 'delta', label: 'Delta (tolerance)', type: 'number', mandatory: true },
+    ],
+  },
+  notEquals: {
+    xmlTag: 'notEquals', label: 'Not Equals', category: 'Filter',
+    description: 'Exclude rows where column value equals specified value',
+    params: [
+      { name: 'sideName', label: 'Side', type: 'side', mandatory: true },
+      { name: 'columnName', label: 'Column', type: 'column', mandatory: true },
+      { name: 'value', label: 'Value', type: 'text', mandatory: true },
+    ],
+  },
+  equalsValue: {
+    xmlTag: 'equalsValue', label: 'Equals Value', category: 'Filter',
+    description: 'Require column value to equal specified value',
+    params: [
+      { name: 'sideName', label: 'Side', type: 'side', mandatory: true },
+      { name: 'columnName', label: 'Column', type: 'column', mandatory: true },
+      { name: 'value', label: 'Value', type: 'text', mandatory: true },
+      { name: 'alpha', label: 'Alpha (float tolerance)', type: 'number', mandatory: false },
+      { name: 'containsFlag', label: 'Contains mode', type: 'boolean', mandatory: false },
+      { name: 'isSubString', label: 'Substring mode', type: 'boolean', mandatory: false },
+      { name: 'regExPattern', label: 'Regex Pattern', type: 'text', mandatory: false },
+    ],
+  },
+  minimum: {
+    xmlTag: 'minimum', label: 'Minimum', category: 'Constraint',
+    description: 'Require minimum row count, optionally filtered by side/column',
+    params: [
+      { name: 'sideName', label: 'Side', type: 'side', mandatory: false },
+      { name: 'minimum', label: 'Minimum Count', type: 'number', mandatory: true },
+      { name: 'columnName', label: 'Column (optional filter)', type: 'column', mandatory: false },
+      { name: 'value', label: 'Value (optional filter)', type: 'text', mandatory: false },
+    ],
+  },
+  equalCount: {
+    xmlTag: 'equalCount', label: 'Equal Count', category: 'Constraint',
+    description: 'Require equal row count on each specified side',
+    params: [
+      { name: 'sides', label: 'Sides', type: 'sides', mandatory: true },
+    ],
+  },
+  groupSize: {
+    xmlTag: 'groupSize', label: 'Group Size', category: 'Constraint',
+    description: 'Require match group to have a specific size',
+    params: [
+      { name: 'value', label: 'Group Size', type: 'number', mandatory: true },
+    ],
+  },
+  count: {
+    xmlTag: 'count', label: 'Count', category: 'Constraint',
+    description: 'Require exact count of rows matching side + column + value',
+    params: [
+      { name: 'sideName', label: 'Side', type: 'side', mandatory: true },
+      { name: 'columnName', label: 'Column', type: 'column', mandatory: true },
+      { name: 'value', label: 'Value', type: 'text', mandatory: true },
+      { name: 'size', label: 'Expected Count', type: 'number', mandatory: true },
+    ],
+  },
+  crossReferenceCountRule: {
+    xmlTag: 'crossReferenceCountRule', label: 'Cross Reference Count', category: 'Advanced',
+    description: 'Match mirrored column pairs across rows',
+    params: [
+      { name: 'column1', label: 'Column 1', type: 'column', mandatory: true },
+      { name: 'column2', label: 'Column 2', type: 'column', mandatory: true },
+    ],
+  },
+  netBySideRule: {
+    xmlTag: 'netBySideRule', label: 'Net By Side', category: 'Advanced',
+    description: 'Check column sum for a side against expected value',
+    params: [
+      { name: 'columnId', label: 'Column', type: 'column', mandatory: true },
+      { name: 'side', label: 'Side', type: 'side', mandatory: true },
+      { name: 'value', label: 'Expected Value', type: 'number', mandatory: true },
+      { name: 'gamma', label: 'Gamma (tolerance)', type: 'number', mandatory: true },
+    ],
+  },
+  countValueBySideRule: {
+    xmlTag: 'countValueBySideRule', label: 'Count Value By Side', category: 'Advanced',
+    description: 'Count rows per side/column/value, require equal counts',
+    params: [
+      { name: 'entries', label: 'Entries (side|column|value per line)', type: 'entries', mandatory: true },
+      { name: 'isDependentFlag', label: 'Dependent Flag', type: 'boolean', mandatory: false },
+    ],
+  },
+  manyToManyNoCountRule: {
+    xmlTag: 'manyToManyNoCountRule', label: 'Many to Many (No Count)', category: 'Advanced',
+    description: 'Many-to-many row matching using specified columns',
+    params: [
+      { name: 'matchColumnsList', label: 'Columns to compare', type: 'multicolumn', mandatory: true },
+      { name: 'sides', label: 'Sides', type: 'sides', mandatory: true },
+    ],
+  },
+};
+
+const RULE_CATEGORIES = ['Comparison', 'Filter', 'Constraint', 'Advanced'];
+
+// Quick-fill pass templates
+const PASS_TEMPLATES = [
+  {
+    name: 'Simple 1:1 Match',
+    description: 'Use all columns as both grouping and matching keys',
+    build: (cols) => ({
+      grouping: cols.map(c => c.label),
+      matching: [],
+      ruleSets: [],
+    }),
+  },
+  {
+    name: 'Key-Group + Value-Match',
+    description: 'First 3 columns as grouping, rest as matching',
+    build: (cols) => ({
+      grouping: cols.slice(0, Math.min(3, cols.length)).map(c => c.label),
+      matching: cols.slice(3).map(c => c.label),
+      ruleSets: [],
+    }),
+  },
+  {
+    name: 'Single Key, Match All',
+    description: 'First column as grouping, all others as matching',
+    build: (cols) => ({
+      grouping: cols.length > 0 ? [cols[0].label] : [],
+      matching: cols.slice(1).map(c => c.label),
+      ruleSets: [],
+    }),
+  },
+];
+
+const STEPPER_LABELS = ['Configure Files', 'Map Columns', 'Configure Passes', 'Generate / Run'];
+
+// >>> AUTO-SUGGEST BUTTON VISIBILITY TOGGLE <<<
+// The legacy deterministic "Auto-Suggest Mapping & Rules" button is hidden from
+// the view for now (AI Auto Config is the active suggestion path). Nothing is
+// removed - flip this to true to show the button again in the future.
+const SHOW_AUTO_SUGGEST_BUTTON = false;
+
+export default function RimmeXmlGen({ instance }) {
+  // ---- Workflow ID (guaranteed before any mapping/XML work) ----
+  const [workflowId, setWorkflowId] = useState(null);
+
+  const generateWorkflowId = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < 8; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+
+  /** Ensure a workflow_id exists; returns the current or newly-generated ID. */
+  const ensureWorkflowId = () => {
+    if (workflowId) return workflowId;
+    const id = generateWorkflowId();
+    setWorkflowId(id);
+    return id;
+  };
+
+  // ---- Phase 1: Configure Form ----
+  const [input1Path, setInput1Path] = useState('');
+  const [input2Path, setInput2Path] = useState('');
+  const [delimiter1, setDelimiter1] = useState('tab');
+  const [delimiter2, setDelimiter2] = useState('tab');
+  const [headerLine1, setHeaderLine1] = useState('1');
+  const [headerLine2, setHeaderLine2] = useState('1');
+  const [systemName1, setSystemName1] = useState('');
+  const [systemName2, setSystemName2] = useState('');
+  const [email, setEmail] = useState('');
+  const [configuring, setConfiguring] = useState(false);
+
+  // Build rec name from user-selected system names on page 1.
+  const sanitizeRecPart = (name, fallback) => {
+    const raw = (name || '').trim();
+    if (!raw) return fallback;
+    const withUnderscore = raw.replace(/\s+/g, '_').replace(/-/g, '_');
+    const cleaned = withUnderscore.replace(/[^A-Za-z0-9_]/g, '');
+    return cleaned || fallback;
+  };
+  const recName = useMemo(() => {
+    const s1 = sanitizeRecPart(systemName1, 'SYSTEM1');
+    const s2 = sanitizeRecPart(systemName2, 'SYSTEM2');
+    return `RIMME_${s1}_VS_${s2}`;
+  }, [systemName1, systemName2]);
+
+  // Auto-populate system names from filename (without extension)
+  const extractSystemName = (filePath) => {
+    if (!filePath) return '';
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    const filename = parts[parts.length - 1] || '';
+    const dotIdx = filename.lastIndexOf('.');
+    return dotIdx > 0 ? filename.substring(0, dotIdx) : filename;
+  };
+  useEffect(() => { setSystemName1(extractSystemName(input1Path)); }, [input1Path]);
+  useEffect(() => { setSystemName2(extractSystemName(input2Path)); }, [input2Path]);
+
+  // ---- Phase 2: Column mapping & Pass config ----
+  const [configured, setConfigured] = useState(false);
+  const [columns, setColumns] = useState([]);
+  const [system1, setSystem1] = useState('');
+  const [system2, setSystem2] = useState('');
+  const [columnSearch, setColumnSearch] = useState('');
+  const [locked, setLocked] = useState(false);
+  const [selected, setSelected] = useState(new Set()); // multi-select indices
+
+  // ---- Passes ----
+  const [passes, setPasses] = useState({ 1: { grouping: [], matching: [], ruleSets: [] } });
+  const [passCounter, setPassCounter] = useState(1);
+  const [ruleSetCounter, setRuleSetCounter] = useState(0);
+
+  // ---- Drag state ----
+  const dragData = useRef(null);
+  const lastClickedRow = useRef(null);
+
+  // ---- Generate result ----
+  const [generating, setGenerating] = useState(false);
+  const [xmlResult, setXmlResult] = useState(null);
+  const [xmlDialogOpen, setXmlDialogOpen] = useState(false);
+
+  // ---- RIMME Initiation state ----
+  const [initiating, setInitiating] = useState(false);
+  const [initiateResult, setInitiateResult] = useState(null);
+
+  // ---- RuleSet popup state ----
+  const [rsPopupOpen, setRsPopupOpen] = useState(false);
+  const [rsPopupPassId, setRsPopupPassId] = useState(null);
+  const [rsPopupEditId, setRsPopupEditId] = useState(null); // null=new, string=editing
+  const [rsPopupName, setRsPopupName] = useState('');
+  const [rsPopupRules, setRsPopupRules] = useState([]);
+  const [rsEditingRuleIdx, setRsEditingRuleIdx] = useState(null);
+  const [rsRuleType, setRsRuleType] = useState('');
+  const [rsRuleParams, setRsRuleParams] = useState({});
+
+  // ---- Side helpers ----
+  // (workflowId state defined above; replaces old counter-based paths)
+
+  // ---- Output viewer state ----
+  const [outputDialogOpen, setOutputDialogOpen] = useState(false);
+  const [outputFiles, setOutputFiles] = useState([]);
+  const [selectedOutput, setSelectedOutput] = useState('');
+  const [outputSheets, setOutputSheets] = useState(null);
+  const [outputLoading, setOutputLoading] = useState(false);
+  const [activeSheet, setActiveSheet] = useState(0);
+
+  // ---- Breaks Analysis state ----
+  const [breaksSheets, setBreaksSheets] = useState(null);
+  const [breaksLoading, setBreaksLoading] = useState(false);
+  const [outputViewTab, setOutputViewTab] = useState(0); // 0 = Match Output, 1 = Breaks Analysis
+  const [breaksActiveSheet, setBreaksActiveSheet] = useState(0);
+  const [rimmeStatus, setRimmeStatus] = useState(null);
+  const pollingRef = useRef(null);
+  const initiatedAtRef = useRef(null);
+  const [suggesting, setSuggesting] = useState(false);
+  // >>> AI AUTO CONFIG - NEW CODE START <<<
+  const [aiSuggesting, setAiSuggesting] = useState(false); // loading state for the "AI Auto Config" button
+  // >>> AI AUTO CONFIG - NEW CODE END <<<
+  const pendingConfigRef = useRef(null); // holds loaded config for post-configure restore
+
+  // ---- Extract state ----
+  const [extracting, setExtracting] = useState(false);
+
+  // ---- Save/Load config state ----
+  const [savedConfigs, setSavedConfigs] = useState([]);
+  const [selectedConfigFile, setSelectedConfigFile] = useState('');
+
+  // ---- Auto-save email (localStorage) ----
+  useEffect(() => {
+    const saved = localStorage.getItem('rimme_email');
+    if (saved) setEmail(saved);
+  }, []);
+  useEffect(() => {
+    if (email) localStorage.setItem('rimme_email', email);
+  }, [email]);
+
+  // ---- Load saved configs list on mount ----
+  useEffect(() => { loadConfigList(); }, []);
+
+  // ---- Cleanup polling on unmount ----
+  useEffect(() => {
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+  }, []);
+  const getSide1 = useCallback(() => `workflows/${workflowId || '?'}/Input/${system1}/`, [workflowId, system1]);
+  const getSide2 = useCallback(() => `workflows/${workflowId || '?'}/Input/${system2}/`, [workflowId, system2]);
+  const getSideLabel = useCallback((s) => {
+    if (s.includes(`/Input/${system1}/`)) return `${system1}`;
+    if (s.includes(`/Input/${system2}/`)) return `${system2}`;
+    return s;
+  }, [system1, system2]);
+
+  // ---- Phase 1: Configure ----
+  const handleConfigure = async () => {
+    if (!input1Path || !input2Path) {
+      notifyError('Please fill in both file paths.');
+      return;
+    }
+    // Guarantee workflow_id exists (first action in the flow)
+    const wfId = ensureWorkflowId();
+    setConfiguring(true);
+    try {
+      const r = await api.post('/gen_basic_rimme_configure', {
+        RecName: recName,
+        Input1Path: input1Path,
+        Input2Path: input2Path,
+        delimiter1,
+        delimiter2,
+        headerLine1,
+        headerLine2,
+        systemName1: systemName1.trim() || undefined,
+        systemName2: systemName2.trim() || undefined,
+      });
+      if (r.data.status === 'success') {
+        const freshColumns = r.data.columns || [];
+        setSystem1(r.data.system1 || '');
+        setSystem2(r.data.system2 || '');
+        setSelected(new Set());
+
+        // Check if we have a pending config to auto-restore
+        const pending = pendingConfigRef.current;
+        pendingConfigRef.current = null;
+        if (pending && pending.columns && pending.columns.length > 0) {
+          // Compare: saved labels vs fresh labels
+          const savedLabels = pending.columns.map(c => c.label).sort().join('|');
+          const freshLabels = freshColumns.map(c => c.label).sort().join('|');
+          if (savedLabels === freshLabels) {
+            // Headers match ? restore full state and auto-generate XML
+            setColumns(pending.columns);
+            if (pending.passes) setPasses(pending.passes);
+            if (pending.passCounter) setPassCounter(pending.passCounter);
+            if (pending.ruleSetCounter) setRuleSetCounter(pending.ruleSetCounter);
+            setLocked(true);
+            setConfigured(true);
+            // Auto-generate XML
+            try {
+              const genR = await api.post('/gen_basic_rimme_generate', {
+                rec_name: recName,
+                system1: r.data.system1 || '',
+                system2: r.data.system2 || '',
+                columns: pending.columns,
+                passes: pending.passes,
+                email,
+                delimiter1,
+                delimiter2,
+                workflow_id: wfId,
+              });
+              if (genR.data.status === 'success') {
+                setXmlResult(genR.data.xml);
+                setXmlDialogOpen(true);
+                notifySuccess('Config applied & XML generated!');
+              } else {
+                notifyError(genR.data.message || 'XML generation failed');
+              }
+            } catch (genErr) {
+              notifyError('XML generation failed: ' + (genErr.response?.data?.message || genErr.message));
+            }
+          } else {
+            // Headers differ ? go to Phase 2 with warning
+            setColumns(freshColumns);
+            setPasses({ 1: { grouping: [], matching: [], ruleSets: [] } });
+            setPassCounter(1);
+            setRuleSetCounter(0);
+            setLocked(false);
+            setConfigured(true);
+            notifyWarning('File headers differ from saved config. Please re-map columns manually.');
+          }
+        } else {
+          // No pending config ? normal flow to Phase 2
+          setColumns(freshColumns);
+          setPasses({ 1: { grouping: [], matching: [], ruleSets: [] } });
+          setPassCounter(1);
+          setRuleSetCounter(0);
+          setLocked(false);
+          setConfigured(true);
+          notifySuccess('Configuration loaded \u2014 set up column mappings below.');
+        }
+      } else {
+        notifyError(r.data.message || 'Configuration failed');
+      }
+    } catch (e) {
+      notifyError('Failed: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setConfiguring(false);
+    }
+  };
+
+  // ---- Auto-Suggest (Rule Suggester) ----
+  const handleExtract = async () => {
+    setExtracting(true);
+    try {
+      const r = await api.post('/extract', {});
+      if (r.status === 200 && r.data.status === 200) {
+        // Capture workflow_id from Extract response
+        if (r.data.workflow_id != null) {
+          setWorkflowId(String(r.data.workflow_id));
+        }
+        // Populate form fields from extract response
+        setInput1Path(r.data.file1 || '');
+        setInput2Path(r.data.file2 || '');
+        setDelimiter1('comma');
+        setDelimiter2('comma');
+        setHeaderLine1('1');
+        setHeaderLine2('1');
+        notifySuccess(r.data.message || 'Files extracted. You can now Continue to Configuration.');
+      } else {
+        notifyError(r.data.message || 'Extract failed: 404 not found.');
+      }
+    } catch (e) {
+      notifyError(e.response?.data?.message || 'Extract failed: 404 not found.');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleAutoSuggest = async () => {
+    if (!input1Path || !input2Path) {
+      notifyError('Please fill in both file paths first.');
+      return;
+    }
+    ensureWorkflowId();
+    setSuggesting(true);
+    try {
+      const r = await api.post('/gen_basic_rimme_suggest', {
+        RecName: recName,
+        Input1Path: input1Path,
+        Input2Path: input2Path,
+        delimiter1,
+        delimiter2,
+        headerLine1,
+        headerLine2,
+      });
+      if (r.data.status === 'success') {
+        setSystem1(r.data.system1 || '');
+        setSystem2(r.data.system2 || '');
+        setColumns(r.data.columns || []);
+        setPasses(r.data.passes || { 1: { grouping: [], matching: [], ruleSets: [] } });
+        setPassCounter(r.data.passCounter || 1);
+        setRuleSetCounter(r.data.ruleSetCounter || 1);
+        setLocked(true);
+        setConfigured(true);
+        setSelected(new Set());
+        const diag = r.data.diagnostics || {};
+        const hierCount = (diag.hierarchies || []).length;
+        const profiles = diag.profiles || [];
+        const gCount = profiles.filter(p => p.role === 'grouping').length;
+        const mCount = profiles.filter(p => p.role === 'matching').length;
+        notifySuccess(
+          `Auto-populated: ${gCount} grouping, ${mCount} matching columns` +
+          (hierCount ? `, ${hierCount} hierarchy pair${hierCount > 1 ? 's' : ''} detected` : '') +
+          `. Review and adjust as needed.`
+        );
+      } else {
+        notifyError(r.data.message || 'Auto-suggest failed');
+      }
+    } catch (e) {
+      notifyError('Auto-suggest failed: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  // >>> AI AUTO CONFIG - NEW CODE START <<<
+  // AI-based alternative to handleAutoSuggest. Behaviour is intentionally
+  // identical (auto-render the suggested config, lock the table, jump to pass
+  // configuration, same downstream flow) - the ONLY difference is the source of
+  // the suggestion payload: the AI endpoint /get_ai_rimme_config_suggest instead
+  // of the deterministic Python rule suggester. handleAutoSuggest is untouched.
+  const handleAiAutoConfig = async () => {
+    if (!input1Path || !input2Path) {
+      notifyError('Please fill in both file paths first.');
+      return;
+    }
+    ensureWorkflowId();
+    setAiSuggesting(true);
+    try {
+      const r = await api.post('/get_ai_rimme_config_suggest', {
+        RecName: recName,
+        Input1Path: input1Path,
+        Input2Path: input2Path,
+        delimiter1,
+        delimiter2,
+        headerLine1,
+        headerLine2,
+      });
+      if (r.data.status === 'success') {
+        setSystem1(r.data.system1 || '');
+        setSystem2(r.data.system2 || '');
+        setColumns(r.data.columns || []);
+        setPasses(r.data.passes || { 1: { grouping: [], matching: [], ruleSets: [] } });
+        setPassCounter(r.data.passCounter || 1);
+        setRuleSetCounter(r.data.ruleSetCounter || 1);
+        setLocked(true);
+        setConfigured(true);
+        setSelected(new Set());
+        // Prefer diagnostics (as the deterministic suggester provides them). If
+        // the AI payload omits diagnostics, fall back to counting the returned
+        // passes so the summary toast is still meaningful.
+        const diag = r.data.diagnostics || {};
+        const hierCount = (diag.hierarchies || []).length;
+        const profiles = diag.profiles || [];
+        let gCount, mCount;
+        if (profiles.length) {
+          gCount = profiles.filter(p => p.role === 'grouping').length;
+          mCount = profiles.filter(p => p.role === 'matching').length;
+        } else {
+          const gSet = new Set();
+          const mSet = new Set();
+          Object.values(r.data.passes || {}).forEach(p => {
+            (p.grouping || []).forEach(l => gSet.add(l));
+            (p.matching || []).forEach(l => mSet.add(l));
+            (p.ruleSets || []).forEach(rs => (rs.matchColumns || []).forEach(l => mSet.add(l)));
+          });
+          gCount = gSet.size;
+          mCount = mSet.size;
+        }
+        notifySuccess(
+          `AI Auto Config populated: ${gCount} grouping, ${mCount} matching columns` +
+          (hierCount ? `, ${hierCount} hierarchy pair${hierCount > 1 ? 's' : ''} detected` : '') +
+          `. Review and adjust as needed.`
+        );
+      } else {
+        notifyError(r.data.message || 'AI Auto Config failed');
+      }
+    } catch (e) {
+      notifyError('AI Auto Config failed: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setAiSuggesting(false);
+    }
+  };
+  // >>> AI AUTO CONFIG - NEW CODE END <<<
+
+  // ---- Column helpers ----
+  const updateDisplayName = (idx, value) => {
+    if (locked) return;
+    setColumns(prev => prev.map((c, i) => i === idx ? { ...c, display_name: value } : c));
+  };
+
+  const updateSystem1Name = (idx, value) => {
+    if (locked) return;
+    setColumns(prev => prev.map((c, i) => i === idx ? { ...c, system1_name: value } : c));
+  };
+
+  const updateSystem2Name = (idx, value) => {
+    if (locked) return;
+    setColumns(prev => prev.map((c, i) => i === idx ? { ...c, system2_name: value } : c));
+  };
+
+  const filteredColumns = columns.filter(c =>
+    !columnSearch ||
+    c.label.toLowerCase().includes(columnSearch.toLowerCase()) ||
+    (c.display_name || '').toLowerCase().includes(columnSearch.toLowerCase()) ||
+    (c.system1_name || '').toLowerCase().includes(columnSearch.toLowerCase()) ||
+    (c.system2_name || '').toLowerCase().includes(columnSearch.toLowerCase())
+  );
+
+  // ---- System name header click -> fill display names ----
+  const fillDisplayNamesFromSystem = (systemKey) => {
+    if (locked) return;
+    setColumns(prev =>
+      prev.map(c => {
+        const sysName = systemKey === 'system1' ? c.system1_name : c.system2_name;
+        if (sysName && sysName.trim() && sysName.trim().toUpperCase() !== 'NA') {
+          return { ...c, display_name: sysName };
+        }
+        return c;
+      })
+    );
+    notifyInfo(`Display names filled from ${systemKey === 'system1' ? system1 : system2} (blanks skipped).`);
+  };
+
+  // ---- Lock / Unlock ----
+  const handleLock = () => {
+    const hasEmpty = columns.some(c => !c.display_name || !c.display_name.trim());
+    if (hasEmpty) {
+      notifyError('Please fill in all Display Name fields before locking.');
+      return;
+    }
+    setLocked(true);
+    setColumnSearch('');
+    notifySuccess('Table locked. Drag rows to configure passes or use multi-select.');
+  };
+
+  const handleUnlock = () => {
+    const hasData = Object.values(passes).some(
+      p => p.grouping.length > 0 || p.matching.length > 0 || (p.ruleSets && p.ruleSets.length > 0)
+    );
+    if (hasData) {
+      if (!window.confirm('Unlocking will clear all pass assignments and RuleSets. Continue?')) return;
+    }
+    setLocked(false);
+    setSelected(new Set());
+    setPasses({ 1: { grouping: [], matching: [], ruleSets: [] } });
+    setPassCounter(1);
+    setRuleSetCounter(0);
+    notifyInfo('Table unlocked. Edit Display Names as needed.');
+  };
+
+  // ---- Selection (Ctrl+click / Shift+click) ----
+  const handleRowClick = (e, realIdx) => {
+    if (!locked) return;
+    e.preventDefault();
+    if (e.shiftKey && lastClickedRow.current !== null) {
+      // Shift+click: range select from lastClickedRow to current
+      const start = Math.min(lastClickedRow.current, realIdx);
+      const end = Math.max(lastClickedRow.current, realIdx);
+      setSelected(prev => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) next.add(i);
+        return next;
+      });
+    } else if (e.ctrlKey || e.metaKey) {
+      // Ctrl+click: toggle single
+      setSelected(prev => {
+        const next = new Set(prev);
+        if (next.has(realIdx)) next.delete(realIdx);
+        else next.add(realIdx);
+        return next;
+      });
+      lastClickedRow.current = realIdx;
+    } else {
+      // Plain click: select only this row
+      setSelected(new Set([realIdx]));
+      lastClickedRow.current = realIdx;
+    }
+  };
+
+  const addSelectedToZone = (passId, zoneType) => {
+    if (selected.size === 0) {
+      notifyWarning('No columns selected. Ctrl+click or Shift+click rows first.');
+      return;
+    }
+    const oppositeType = zoneType === 'grouping' ? 'matching' : 'grouping';
+    let added = 0;
+    let skipped = 0;
+
+    setPasses(prev => {
+      const updated = { ...prev[passId] };
+      const newZone = [...updated[zoneType]];
+      selected.forEach(idx => {
+        const label = columns[idx]?.label;
+        if (!label) return;
+        if (updated[oppositeType].includes(label)) { skipped++; return; }
+        if (newZone.includes(label)) return;
+        newZone.push(label);
+        added++;
+      });
+      return { ...prev, [passId]: { ...updated, [zoneType]: newZone } };
+    });
+    setSelected(new Set());
+    if (skipped > 0) notifyWarning(`${skipped} column(s) skipped (already in ${oppositeType}).`);
+    if (added > 0) notifySuccess(`${added} column(s) added to ${zoneType}.`);
+  };
+
+  // ---- Pass management ----
+  const addPass = () => {
+    const nextId = passCounter + 1;
+    setPassCounter(nextId);
+    setPasses(prev => ({ ...prev, [nextId]: { grouping: [], matching: [], ruleSets: [] } }));
+  };
+
+  const deletePass = (passId) => {
+    if (Object.keys(passes).length <= 1) {
+      notifyError('At least one pass is required.');
+      return;
+    }
+    if (!window.confirm(`Delete Pass ${passId} and all its assignments?`)) return;
+    setPasses(prev => {
+      const newPasses = { ...prev };
+      delete newPasses[passId];
+      return newPasses;
+    });
+  };
+
+  // ---- Drag and Drop ----
+  const onDragStart = (e, idx) => {
+    if (!locked) { e.preventDefault(); return; }
+    // If dragged row is part of selection, drag all selected; otherwise just this row
+    let items;
+    if (selected.has(idx) && selected.size > 1) {
+      items = [...selected].sort((a, b) => a - b).map(i => ({
+        index: i,
+        label: columns[i].label,
+        display_name: columns[i].display_name,
+      }));
+    } else {
+      const col = columns[idx];
+      items = [{ index: idx, label: col.label, display_name: col.display_name }];
+    }
+    dragData.current = { items };
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', items.map(it => it.label).join(','));
+    // Create custom drag image with display names
+    const dragEl = document.createElement('div');
+    dragEl.style.cssText = 'position:fixed;left:-999px;top:-999px;padding:6px 12px;background:#1976d2;color:#fff;border-radius:6px;font-size:13px;white-space:nowrap;z-index:9999;';
+    dragEl.textContent = items.length > 1
+      ? `${items.length} columns: ${items.slice(0, 3).map(i => i.display_name).join(', ')}${items.length > 3 ? '...' : ''}`
+      : items[0].display_name;
+    document.body.appendChild(dragEl);
+    e.dataTransfer.setDragImage(dragEl, 0, 0);
+    setTimeout(() => document.body.removeChild(dragEl), 0);
+    e.currentTarget.style.opacity = '0.4';
+  };
+
+  const onDragEnd = (e) => {
+    e.currentTarget.style.opacity = '1';
+    dragData.current = null;
+    document.querySelectorAll('.rimme-drop-zone').forEach(z => {
+      z.style.borderColor = '';
+      z.style.backgroundColor = '';
+    });
+  };
+
+  const onZoneDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    const zone = e.currentTarget;
+    const isGrouping = zone.dataset.zonetype === 'grouping';
+    zone.style.borderColor = isGrouping ? '#4caf50' : '#1976d2';
+    zone.style.backgroundColor = isGrouping ? '#c8e6c9' : '#bbdefb';
+  };
+
+  const onZoneDragLeave = (e) => {
+    e.currentTarget.style.borderColor = '';
+    e.currentTarget.style.backgroundColor = '';
+  };
+
+  const onZoneDrop = (e, passId, zoneType, rsId) => {
+    e.preventDefault();
+    e.currentTarget.style.borderColor = '';
+    e.currentTarget.style.backgroundColor = '';
+    if (!dragData.current || !dragData.current.items || dragData.current.items.length === 0) return;
+
+    let added = 0;
+    let skipped = 0;
+
+    setPasses(prev => {
+      const pass = { ...prev[passId] };
+
+      if (zoneType === 'grouping') {
+        const newZone = [...pass.grouping];
+        for (const item of dragData.current.items) {
+          const { label } = item;
+          // Cannot be in matching or any ruleSet matchColumns
+          const inMatching = pass.matching.includes(label) ||
+            (pass.ruleSets || []).some(rs => rs.matchColumns.includes(label));
+          if (inMatching) { skipped++; continue; }
+          if (newZone.includes(label)) continue;
+          newZone.push(label);
+          added++;
+        }
+        return { ...prev, [passId]: { ...pass, grouping: newZone } };
+
+      } else if (zoneType === 'matching') {
+        const newZone = [...pass.matching];
+        for (const item of dragData.current.items) {
+          const { label } = item;
+          if (pass.grouping.includes(label)) { skipped++; continue; }
+          if (newZone.includes(label)) continue;
+          newZone.push(label);
+          added++;
+        }
+        return { ...prev, [passId]: { ...pass, matching: newZone } };
+
+      } else if (zoneType === 'ruleset-matching' && rsId) {
+        const newRuleSets = pass.ruleSets.map(rs => {
+          if (rs.id !== rsId) return rs;
+          const newMc = [...rs.matchColumns];
+          for (const item of dragData.current.items) {
+            const { label } = item;
+            if (pass.grouping.includes(label)) { skipped++; continue; }
+            if (newMc.includes(label)) continue;
+            newMc.push(label);
+            added++;
+          }
+          return { ...rs, matchColumns: newMc };
+        });
+        return { ...prev, [passId]: { ...pass, ruleSets: newRuleSets } };
+      }
+      return prev;
+    });
+
+    if (skipped > 0) notifyWarning(`${skipped} column(s) skipped (constraint violation).`);
+    if (added > 0) notifySuccess(`${added} column(s) added to ${zoneType === 'ruleset-matching' ? 'RuleSet matching' : zoneType} of Pass ${passId}.`);
+    if (added === 0 && skipped === 0) notifyWarning('All dragged columns were already in this zone.');
+  };
+
+  // ---- Remove from zone ----
+  const removeFromZone = (passId, zoneType, label) => {
+    setPasses(prev => ({
+      ...prev,
+      [passId]: { ...prev[passId], [zoneType]: prev[passId][zoneType].filter(l => l !== label) },
+    }));
+  };
+
+  // ---- Remove from RuleSet matching zone ----
+  const removeFromRsZone = (passId, rsId, label) => {
+    setPasses(prev => ({
+      ...prev,
+      [passId]: {
+        ...prev[passId],
+        ruleSets: prev[passId].ruleSets.map(rs =>
+          rs.id === rsId ? { ...rs, matchColumns: rs.matchColumns.filter(l => l !== label) } : rs
+        ),
+      },
+    }));
+  };
+
+  // ---- RuleSet CRUD ----
+  const openRuleSetPopup = (passId, rsId) => {
+    setRsPopupPassId(passId);
+    setRsPopupEditId(rsId || null);
+    setRsEditingRuleIdx(null);
+    setRsRuleType('');
+    setRsRuleParams({});
+
+    if (rsId) {
+      const rs = passes[passId]?.ruleSets?.find(r => r.id === rsId);
+      if (!rs) return;
+      setRsPopupRules(JSON.parse(JSON.stringify(rs.rules)));
+      setRsPopupName(rs.name);
+    } else {
+      const num = (passes[passId]?.ruleSets?.length || 0) + 1;
+      setRsPopupRules([
+        { ruleType: 'minimum', params: { sideName: getSide1(), minimum: '1' } },
+        { ruleType: 'minimum', params: { sideName: getSide2(), minimum: '1' } },
+      ]);
+      setRsPopupName('RuleSet ' + num);
+    }
+    setRsPopupOpen(true);
+  };
+
+  const closeRuleSetPopup = () => {
+    setRsPopupOpen(false);
+    setRsPopupPassId(null);
+    setRsPopupEditId(null);
+    setRsPopupRules([]);
+    setRsPopupName('');
+    setRsEditingRuleIdx(null);
+    setRsRuleType('');
+    setRsRuleParams({});
+  };
+
+  const saveRuleSet = () => {
+    const name = rsPopupName.trim();
+    if (!name) { notifyError('Please enter a RuleSet name.'); return; }
+
+    setPasses(prev => {
+      const pass = { ...prev[rsPopupPassId] };
+      if (rsPopupEditId) {
+        // Update existing
+        pass.ruleSets = pass.ruleSets.map(rs =>
+          rs.id === rsPopupEditId
+            ? { ...rs, name, rules: JSON.parse(JSON.stringify(rsPopupRules)) }
+            : rs
+        );
+      } else {
+        // Create new
+        const newId = 'rs_' + (ruleSetCounter + 1);
+        setRuleSetCounter(c => c + 1);
+        const newRs = {
+          id: newId,
+          name,
+          rules: JSON.parse(JSON.stringify(rsPopupRules)),
+          matchColumns: [],
+        };
+        // Migrate existing matching columns to first ruleSet
+        if (pass.ruleSets.length === 0 && pass.matching.length > 0) {
+          newRs.matchColumns = [...pass.matching];
+          pass.matching = [];
+        }
+        pass.ruleSets = [...pass.ruleSets, newRs];
+      }
+      return { ...prev, [rsPopupPassId]: pass };
+    });
+
+    closeRuleSetPopup();
+    notifySuccess(`RuleSet "${name}" saved.`);
+  };
+
+  const deleteRuleSet = (passId, rsId) => {
+    const rs = passes[passId]?.ruleSets?.find(r => r.id === rsId);
+    if (!rs) return;
+    if (!window.confirm(`Delete "${rs.name}" and all its rules?`)) return;
+
+    setPasses(prev => {
+      const pass = { ...prev[passId] };
+      const targetRs = pass.ruleSets.find(r => r.id === rsId);
+      // If last ruleSet, restore matchColumns to top-level matching
+      if (pass.ruleSets.length === 1 && targetRs) {
+        pass.matching = [...targetRs.matchColumns];
+      }
+      pass.ruleSets = pass.ruleSets.filter(r => r.id !== rsId);
+      return { ...prev, [passId]: pass };
+    });
+    notifyInfo(`${rs.name} deleted.`);
+  };
+
+  // ---- RuleSet popup - Rule management ----
+  const validateRuleParams = (ruleType, params) => {
+    const def = RULE_DEFINITIONS[ruleType];
+    if (!def) return 'Unknown rule type';
+    for (const p of def.params) {
+      if (!p.mandatory) continue;
+      const val = params[p.name];
+      if (val === undefined || val === null || val === '') return `${p.label} is required`;
+      if (p.type === 'sides' && (!Array.isArray(val) || val.length === 0)) return `${p.label}: select at least one side`;
+      if (p.type === 'entries' && (!Array.isArray(val) || val.length === 0)) return `${p.label}: add at least one entry`;
+      if (p.type === 'multicolumn' && (!Array.isArray(val) || val.length === 0)) return `${p.label}: select at least one column`;
+    }
+    return null;
+  };
+
+  const confirmAddRule = () => {
+    if (!rsRuleType) { notifyError('Select a rule type first.'); return; }
+    const err = validateRuleParams(rsRuleType, rsRuleParams);
+    if (err) { notifyError(err); return; }
+
+    const rule = { ruleType: rsRuleType, params: { ...rsRuleParams } };
+    if (rsEditingRuleIdx !== null) {
+      setRsPopupRules(prev => prev.map((r, i) => i === rsEditingRuleIdx ? rule : r));
+    } else {
+      setRsPopupRules(prev => [...prev, rule]);
+    }
+    setRsEditingRuleIdx(null);
+    setRsRuleType('');
+    setRsRuleParams({});
+  };
+
+  const editRuleInPopup = (idx) => {
+    const rule = rsPopupRules[idx];
+    if (!rule) return;
+    setRsEditingRuleIdx(idx);
+    setRsRuleType(rule.ruleType);
+    setRsRuleParams({ ...rule.params });
+  };
+
+  const removeRuleFromPopup = (idx) => {
+    setRsPopupRules(prev => prev.filter((_, i) => i !== idx));
+    if (rsEditingRuleIdx === idx) {
+      setRsEditingRuleIdx(null);
+      setRsRuleType('');
+      setRsRuleParams({});
+    } else if (rsEditingRuleIdx !== null && rsEditingRuleIdx > idx) {
+      setRsEditingRuleIdx(prev => prev - 1);
+    }
+  };
+
+  const buildRulesSummary = (rules) => {
+    if (!rules || rules.length === 0) return 'No rules';
+    const counts = {};
+    rules.forEach(r => {
+      const def = RULE_DEFINITIONS[r.ruleType];
+      const lbl = def ? def.label : r.ruleType;
+      counts[lbl] = (counts[lbl] || 0) + 1;
+    });
+    return Object.entries(counts).map(([k, v]) => v > 1 ? `${v}\u00d7 ${k}` : k).join(', ');
+  };
+
+  const buildRuleParamsSummary = (rule) => {
+    const def = RULE_DEFINITIONS[rule.ruleType];
+    if (!def) return '';
+    const parts = [];
+    for (const p of def.params) {
+      const val = rule.params[p.name];
+      if (val === undefined || val === null || val === '' || val === false) continue;
+      if (p.type === 'boolean') { parts.push(p.name); continue; }
+      if (p.type === 'sides' && Array.isArray(val)) { parts.push('sides: ' + val.length); continue; }
+      if (p.type === 'entries' && Array.isArray(val)) { parts.push(val.length + ' entries'); continue; }
+      if (p.type === 'multicolumn' && Array.isArray(val)) { parts.push(val.length + ' cols'); continue; }
+      const sv = String(val);
+      parts.push(p.label + ': ' + (sv.length > 25 ? sv.substring(0, 22) + '...' : sv));
+    }
+    return parts.join(', ') || '(no params)';
+  };
+
+  // ---- Render a rule param field ----
+  const renderRuleParamField = (paramDef, values, onChange) => {
+    const val = values[paramDef.name];
+    switch (paramDef.type) {
+      case 'text':
+        return <TextField size="small" fullWidth value={val || ''} onChange={e => onChange(paramDef.name, e.target.value)} />;
+      case 'number':
+        return <TextField size="small" type="number" inputProps={{ step: 'any' }} fullWidth
+          value={val !== undefined ? val : ''} onChange={e => onChange(paramDef.name, e.target.value)} />;
+      case 'boolean':
+        return <FormControlLabel control={<Checkbox size="small" checked={!!val} onChange={e => onChange(paramDef.name, e.target.checked)} />}
+          label={paramDef.label} />;
+      case 'select':
+        return (
+          <Select size="small" fullWidth value={val || ''} onChange={e => onChange(paramDef.name, e.target.value)}>
+            {(paramDef.options || []).map(opt => (
+              <MenuItem key={opt} value={opt}>{opt || '(none)'}</MenuItem>
+            ))}
+          </Select>
+        );
+      case 'column':
+        return (
+          <Select size="small" fullWidth value={val || ''} onChange={e => onChange(paramDef.name, e.target.value)} displayEmpty>
+            <MenuItem value="">-- Select Column --</MenuItem>
+            {columns.map(col => (
+              <MenuItem key={col.label} value={col.label}>{col.display_name} ({col.label})</MenuItem>
+            ))}
+          </Select>
+        );
+      case 'side':
+        return (
+          <Select size="small" fullWidth value={val || ''} onChange={e => onChange(paramDef.name, e.target.value)} displayEmpty>
+            <MenuItem value="">-- Select Side --</MenuItem>
+            <MenuItem value={getSide1()}>{system1}</MenuItem>
+            <MenuItem value={getSide2()}>{system2}</MenuItem>
+          </Select>
+        );
+      case 'sides': {
+        const sideOpts = [getSide1(), getSide2()];
+        const checked = val || sideOpts;
+        return (
+          <Stack direction="row" spacing={2}>
+            {sideOpts.map(sv => (
+              <FormControlLabel key={sv} control={
+                <Checkbox size="small" checked={checked.includes(sv)}
+                  onChange={e => {
+                    const next = e.target.checked ? [...(checked.filter(x => x !== sv)), sv] : checked.filter(x => x !== sv);
+                    onChange(paramDef.name, next);
+                  }} />
+              } label={getSideLabel(sv)} />
+            ))}
+          </Stack>
+        );
+      }
+      case 'entries':
+        return (
+          <TextField size="small" fullWidth multiline rows={3}
+            placeholder="One per line: sideName|columnName|value"
+            value={Array.isArray(val) ? val.map(e => `${e.sideName}|${e.columnName}|${e.value}`).join('\n') : (val || '')}
+            onChange={e => {
+              const lines = e.target.value.split('\n').filter(l => l.trim());
+              onChange(paramDef.name, lines.map(line => {
+                const parts = line.split('|');
+                return { sideName: (parts[0] || '').trim(), columnName: (parts[1] || '').trim(), value: (parts[2] || '').trim() };
+              }));
+            }} />
+        );
+      case 'multicolumn': {
+        const selCols = val || [];
+        return (
+          <Box sx={{ maxHeight: 200, overflow: 'auto', border: '1px solid #ccc', borderRadius: 1, p: 1 }}>
+            {columns.map(col => (
+              <FormControlLabel key={col.label} sx={{ display: 'block' }}
+                control={<Checkbox size="small" checked={selCols.includes(col.label)}
+                  onChange={e => {
+                    const next = e.target.checked ? [...selCols, col.label] : selCols.filter(l => l !== col.label);
+                    onChange(paramDef.name, next);
+                  }} />}
+                label={`${col.display_name} (${col.label})`} />
+            ))}
+          </Box>
+        );
+      }
+      default:
+        return <TextField size="small" fullWidth value={val || ''} onChange={e => onChange(paramDef.name, e.target.value)} />;
+    }
+  };
+
+  // ---- Get display name for a label ----
+  const getDisplayName = useCallback((label) => {
+    const col = columns.find(c => c.label === label);
+    return col?.display_name || label;
+  }, [columns]);
+
+  // ---- Generate XML ----
+  const handleGenerate = async () => {
+    if (!locked) {
+      notifyError('Please lock the column table first.');
+      return;
+    }
+    const passKeysList = Object.keys(passes);
+    for (const pk of passKeysList) {
+      const cfg = passes[pk];
+      const hasGrouping = cfg.grouping.length > 0;
+      const hasMatching = cfg.matching.length > 0;
+      const hasRuleSets = (cfg.ruleSets || []).length > 0;
+
+      if (!hasGrouping && !hasMatching && !hasRuleSets) {
+        notifyError(`Pass ${pk} is empty. Add columns or delete the pass.`);
+        return;
+      }
+      if (hasRuleSets) {
+        for (const rs of cfg.ruleSets) {
+          if (rs.rules.length === 0 && rs.matchColumns.length === 0) {
+            notifyError(`RuleSet "${rs.name}" in Pass ${pk} has no rules or match columns.`);
+            return;
+          }
+        }
+      }
+    }
+
+    // Renumber passes sequentially
+    const sortedPassIds = passKeysList.sort((a, b) => Number(a) - Number(b));
+    const renumberedPasses = {};
+    sortedPassIds.forEach((oldId, i) => {
+      const cfg = passes[oldId];
+      renumberedPasses[String(i + 1)] = {
+        grouping: cfg.grouping,
+        matching: cfg.matching,
+        ruleSets: (cfg.ruleSets || []).map(rs => ({
+          name: rs.name,
+          rules: rs.rules,
+          matchColumns: rs.matchColumns,
+        })),
+      };
+    });
+
+    setGenerating(true);
+    try {
+      const r = await api.post('/gen_basic_rimme_generate', {
+        rec_name: recName,
+        system1,
+        system2,
+        columns,
+        passes: renumberedPasses,
+        email,
+        delimiter1,
+        delimiter2,
+        workflow_id: workflowId,
+      });
+      if (r.data.status === 'success') {
+        setXmlResult(r.data.xml);
+        setXmlDialogOpen(true);
+        notifySuccess('XML generated successfully!');
+      } else {
+        notifyError(r.data.message || 'Generation failed');
+      }
+    } catch (e) {
+      notifyError('Failed: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // ---- Copy with fallback ----
+  const copyXml = () => {
+    const text = xmlResult;
+    if (!text) { notifyError('Nothing to copy'); return; }
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => notifySuccess('XML copied to clipboard!'))
+        .catch(() => _fallbackCopyText(text));
+    } else {
+      _fallbackCopyText(text);
+    }
+  };
+
+  const _fallbackCopyText = (text) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); notifySuccess('XML copied to clipboard!'); }
+    catch { notifyError('Copy failed - please select and copy manually'); }
+    ta.remove();
+  };
+
+  const downloadXml = () => {
+    const blob = new Blob([xmlResult], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${recName}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    notifySuccess('XML file downloaded.');
+  };
+
+  const downloadRelabeledFile = async (systemKey, filePath, delimiter, headerLine, fileLabel) => {
+    try {
+      const r = await api.post('/gen_basic_rimme_download_file', {
+        filePath,
+        columns,
+        systemKey,
+        delimiter,
+        headerLine: parseInt(headerLine, 10),
+      });
+      if (r.data.status === 'success') {
+        const blob = new Blob([r.data.content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const baseName = filePath.split('/').pop() || `${fileLabel}_relabeled.txt`;
+        a.href = url;
+        a.download = `relabeled_${baseName}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        notifySuccess(`${fileLabel} file downloaded with labels.`);
+      } else {
+        notifyError(r.data.message || `Failed to download ${fileLabel} file`);
+      }
+    } catch (e) {
+      notifyError(`Failed: ${e.response?.data?.message || e.message}`);
+    }
+  };
+
+  const downloadAllThree = async () => {
+    downloadXml();
+    await downloadRelabeledFile('system1', input1Path, delimiter1, headerLine1, system1);
+    await downloadRelabeledFile('system2', input2Path, delimiter2, headerLine2, system2);
+  };
+
+  // ---- INITIATE MATCHING handler ----
+  const handleInitiateMatching = async () => {
+    if (!email || !email.endsWith('@nomura.com')) {
+      alert('A valid @nomura.com email is required to initiate matching.');
+      return;
+    }
+    setInitiating(true);
+    setInitiateResult(null);
+    setRimmeStatus(null);
+    // Record initiation time (UTC) for log filtering
+    initiatedAtRef.current = new Date().toISOString();
+    try {
+      // Renumber passes
+      const passKeysList = Object.keys(passes);
+      const sortedPassIds = passKeysList.sort((a, b) => Number(a) - Number(b));
+      const renumberedPasses = {};
+      sortedPassIds.forEach((oldId, i) => {
+        const cfg = passes[oldId];
+        renumberedPasses[String(i + 1)] = {
+          grouping: cfg.grouping,
+          matching: cfg.matching,
+          ruleSets: (cfg.ruleSets || []).map(rs => ({
+            name: rs.name,
+            rules: rs.rules,
+            matchColumns: rs.matchColumns,
+          })),
+        };
+      });
+      const r = await api.post('/gen_basic_rimme_initiate', {
+        rec_name: recName,
+        email,
+        columns,
+        passes: renumberedPasses,
+        input1Path,
+        input2Path,
+        delimiter1,
+        delimiter2,
+        headerLine1,
+        headerLine2,
+        workflow_id: workflowId,
+        system1,
+        system2,
+      });
+      if (r.data.status === 'success') {
+        setInitiateResult({ severity: 'success', message: r.data.message });
+        // Start polling for completion
+        startPolling();
+      } else {
+        setInitiateResult({ severity: 'error', message: r.data.message || 'Unknown error' });
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Initiation failed';
+      setInitiateResult({ severity: 'error', message: msg });
+    } finally {
+      setInitiating(false);
+    }
+  };
+
+  // ---- RIMME Status Polling ----
+  const startPolling = () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    setRimmeStatus({ status: 'running', message: 'Checking RIMME status...' });
+    const poll = async () => {
+      try {
+        const r = await api.get('/gen_basic_rimme_status', {
+          params: {
+            rec_name: recName,
+            initiated_after_utc: initiatedAtRef.current || '',
+          },
+        });
+        if (r.data.status === 'success') {
+          setRimmeStatus({ status: r.data.rimme_status, message: r.data.message });
+          if (r.data.rimme_status === 'completed') {
+            stopPolling();
+            notifySuccess('RIMME matching completed!');
+          }
+        }
+      } catch { /* ignore polling errors */ }
+    };
+    poll();
+    pollingRef.current = setInterval(poll, 5000);
+  };
+
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  };
+
+  // ---- Output Viewer ----
+  const loadOutputFiles = async () => {
+    try {
+      const r = await api.get('/gen_basic_rimme_outputs', { params: { rec_name: recName, workflow_id: workflowId || '' } });
+      if (r.data.status === 'success') {
+        setOutputFiles(r.data.files || []);
+      } else {
+        notifyError(r.data.message || 'Failed to list outputs');
+      }
+    } catch (e) {
+      notifyError('Failed to list outputs: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
+  const openOutputViewer = async () => {
+    setOutputDialogOpen(true);
+    setOutputSheets(null);
+    setSelectedOutput('');
+    setActiveSheet(0);
+    setOutputViewTab(0);
+    setBreaksSheets(null);
+    setBreaksActiveSheet(0);
+    await loadOutputFiles();
+  };
+
+  const viewOutputFile = async (filename) => {
+    if (!filename) return;
+    setSelectedOutput(filename);
+    setOutputLoading(true);
+    setOutputSheets(null);
+    setActiveSheet(0);
+    try {
+      const r = await api.post('/gen_basic_rimme_output_view', { rec_name: recName, filename, workflow_id: workflowId || '' });
+      if (r.data.status === 'success') {
+        setOutputSheets(r.data.sheets);
+        // Auto-select first sheet with data
+        const sheetNames = Object.keys(r.data.sheets);
+        const firstNonEmpty = sheetNames.findIndex(sn => r.data.sheets[sn].row_count > 0);
+        if (firstNonEmpty >= 0) setActiveSheet(firstNonEmpty);
+      } else {
+        notifyError(r.data.message || 'Failed to load output');
+      }
+    } catch (e) {
+      notifyError('Failed: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setOutputLoading(false);
+    }
+  };
+
+  const downloadOutputFile = async (filename) => {
+    try {
+      const r = await api.post('/gen_basic_rimme_output_download', { rec_name: recName, filename, workflow_id: workflowId || '' }, { responseType: 'blob' });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notifySuccess('Output file downloaded.');
+    } catch (e) {
+      notifyError('Download failed: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
+  // ---- Send Breaks to AI ----
+  const handleSendBreaks = async () => {
+    if (!selectedOutput) { notifyError('Select an output file first.'); return; }
+    setBreaksLoading(true);
+    setBreaksSheets(null);
+    try {
+      const r = await api.post('/sendBreaks', { rec_name: recName, filename: selectedOutput, workflow_id: workflowId || '' });
+      if (r.data.status === 'success') {
+        setBreaksSheets(r.data.sheets || {});
+        setOutputViewTab(1);
+        setBreaksActiveSheet(0);
+        const sheetNames = Object.keys(r.data.sheets || {});
+        const firstNonEmpty = sheetNames.findIndex(sn => (r.data.sheets[sn]?.row_count || 0) > 0);
+        if (firstNonEmpty >= 0) setBreaksActiveSheet(firstNonEmpty);
+        notifySuccess('Breaks analysis complete.');
+      } else {
+        notifyError(r.data.message || 'Break analysis failed.');
+      }
+    } catch (e) {
+      notifyError('Break analysis failed: ' + (e.response?.data?.message || e.message));
+    } finally {
+      setBreaksLoading(false);
+    }
+  };
+
+  // ---- Save / Load Config ----
+  const loadConfigList = async () => {
+    try {
+      const r = await api.get('/api/rimmeConfig');
+      if (r.data.status === 'success') setSavedConfigs(r.data.configs || []);
+    } catch { /* ignore */ }
+  };
+
+  const saveConfig = async () => {
+    const name = window.prompt('Enter a name for this configuration:');
+    if (!name || !name.trim()) return;
+    try {
+      await api.post('/api/rimmeConfig', {
+        name: name.trim(),
+        columns, system1, system2,
+        passes, passCounter, ruleSetCounter, locked,
+      });
+      notifySuccess(`Configuration "${name.trim()}" saved.`);
+    } catch (e) {
+      notifyError('Save failed: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
+  const loadSelectedConfig = async (filename) => {
+    if (!filename) { pendingConfigRef.current = null; return; }
+    try {
+      const r = await api.get(`/api/rimmeConfig/${filename}`);
+      if (r.data.status === 'success') {
+        const c = r.data.config;
+        pendingConfigRef.current = {
+          columns: c.columns || [],
+          system1: c.system1 || '',
+          system2: c.system2 || '',
+          passes: c.passes,
+          passCounter: c.passCounter,
+          ruleSetCounter: c.ruleSetCounter,
+          locked: c.locked,
+        };
+      }
+    } catch { pendingConfigRef.current = null; }
+  };
+
+  const deleteConfig = async (filename) => {
+    if (!window.confirm('Delete this saved configuration?')) return;
+    try {
+      await api.delete(`/api/rimmeConfig/${filename}`);
+      setSavedConfigs(prev => prev.filter(c => c.filename !== filename));
+      notifySuccess('Configuration deleted.');
+      if (selectedConfigFile === filename) {
+        setSelectedConfigFile('');
+        pendingConfigRef.current = null;
+      }
+    } catch (e) {
+      notifyError('Delete failed: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
+  // ---- Quick-fill pass template ----
+  const applyPassTemplate = (passId, template) => {
+    const result = template.build(columns);
+    setPasses(prev => ({
+      ...prev,
+      [passId]: { ...prev[passId], ...result },
+    }));
+    notifySuccess(`Template "${template.name}" applied to Pass ${passId}.`);
+  };
+
+  // ---- Active step for stepper ----
+  const activeStep = !configured ? 0 : !locked ? 1 : (xmlResult ? 3 : 2);
+
+  // ======================= RENDER ========================================
+
+  // ---- Phase 1: Configure Form ----
+  if (!configured) {
+    return (
+      <Box sx={{ maxWidth: 900, mx: 'auto', mt: 2, px: 2 }}>
+        <Typography variant="h4" gutterBottom>File Configuration</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Configure column mapping &amp; pass rules interactively, then generate RIMME XML.
+        </Typography>
+
+        {/* Step indicator */}
+        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}>
+          {STEPPER_LABELS.map(label => (
+            <Step key={label}><StepLabel>{label}</StepLabel></Step>
+          ))}
+        </Stepper>
+
+        <Paper sx={{ p: 3 }}>
+          <Stack spacing={2.5}>
+            {/* File 1 */}
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>File 1 (System 1)</Typography>
+              <TextField label="File Path (server)" size="small" fullWidth required
+                value={input1Path} onChange={e => setInput1Path(e.target.value)}
+                placeholder="/path/to/system1_input.csv" sx={{ mb: 1.5 }} />
+              <Stack direction="row" spacing={2}>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Delimiter</InputLabel>
+                  <Select value={delimiter1} label="Delimiter"
+                    onChange={e => setDelimiter1(e.target.value)}>
+                    {DELIMITER_OPTIONS.map(o => (
+                      <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField label="Header Line #" type="number" size="small" sx={{ width: 140 }}
+                  value={headerLine1} onChange={e => setHeaderLine1(e.target.value)}
+                  inputProps={{ min: 1 }}
+                  helperText="1-based line number" />
+                <TextField label="System Name" size="small" sx={{ minWidth: 180 }}
+                  value={systemName1} onChange={e => setSystemName1(e.target.value)}
+                  placeholder="System1"
+                  helperText="Used in XML (auto-filled from filename)" />
+              </Stack>
+            </Paper>
+
+            {/* File 2 */}
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>File 2 (System 2)</Typography>
+              <TextField label="File Path (server)" size="small" fullWidth required
+                value={input2Path} onChange={e => setInput2Path(e.target.value)}
+                placeholder="/path/to/system2_input.csv" sx={{ mb: 1.5 }} />
+              <Stack direction="row" spacing={2}>
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel>Delimiter</InputLabel>
+                  <Select value={delimiter2} label="Delimiter"
+                    onChange={e => setDelimiter2(e.target.value)}>
+                    {DELIMITER_OPTIONS.map(o => (
+                      <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField label="Header Line #" type="number" size="small" sx={{ width: 140 }}
+                  value={headerLine2} onChange={e => setHeaderLine2(e.target.value)}
+                  inputProps={{ min: 1 }}
+                  helperText="1-based line number" />
+                <TextField label="System Name" size="small" sx={{ minWidth: 180 }}
+                  value={systemName2} onChange={e => setSystemName2(e.target.value)}
+                  placeholder="System2"
+                  helperText="Used in XML (auto-filled from filename)" />
+              </Stack>
+            </Paper>
+
+            {/* Email */}
+            <TextField label="Notification Email" size="small" fullWidth required
+              value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="your.name@nomura.com"
+              error={email.length > 0 && !email.endsWith('@nomura.com')}
+              helperText="Must be a valid @nomura.com email address" />
+
+            <Alert severity="info" sx={{ py: 0.5 }}>
+              Headers are read from each file using the specified delimiter and header line.
+              System 1 headers become display names; System 2 headers are fuzzy-matched with a dropdown to adjust.
+            </Alert>
+
+            {/* Optional: Load saved column/pass config */}
+            <Divider sx={{ my: 1 }} />
+            <Stack direction="row" spacing={1} alignItems="center">
+              <FormControl size="small" fullWidth>
+                <InputLabel>Load Saved Config (optional)</InputLabel>
+                <Select
+                  value={selectedConfigFile}
+                  label="Load Saved Config (optional)"
+                  onChange={e => { setSelectedConfigFile(e.target.value); loadSelectedConfig(e.target.value); }}
+                >
+                  <MenuItem value=""><em>None - start fresh</em></MenuItem>
+                  {savedConfigs.map(c => (
+                    <MenuItem key={c.filename} value={c.filename}>
+                      {c.name} ({c.columnCount} cols)
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {selectedConfigFile && (
+                <IconButton size="small" color="error" title="Delete this config"
+                  onClick={() => deleteConfig(selectedConfigFile)}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              )}
+            </Stack>
+            {selectedConfigFile && (
+              <Alert severity="info" sx={{ py: 0.5 }}>
+                If file headers match the saved config, you{"\u2019"}ll go directly to XML generation.
+                Otherwise you{"\u2019"}ll land on column mapping with a notification.
+              </Alert>
+            )}
+
+            <Stack direction="row" spacing={2}>
+              <Button variant="contained" onClick={handleConfigure} disabled={configuring || suggesting || aiSuggesting}
+                endIcon={configuring ? <CircularProgress size={16} color="inherit" /> : <ArrowForwardIcon />}>
+                Continue to Configuration
+              </Button>
+              <Button variant="outlined" color="success" onClick={handleExtract}
+                disabled={extracting}
+                startIcon={extracting ? <CircularProgress size={16} /> : <DownloadIcon />}>
+                {extracting ? 'Extracting ' : 'Extract'}
+              </Button>
+              {/* Legacy deterministic auto-suggest button - hidden via SHOW_AUTO_SUGGEST_BUTTON (set it true to restore) */}
+              {SHOW_AUTO_SUGGEST_BUTTON && (
+              <Button variant="outlined" color="secondary" onClick={handleAutoSuggest}
+                disabled={suggesting || aiSuggesting || configuring || !input1Path || !input2Path}
+                startIcon={suggesting ? <CircularProgress size={16} /> : <SettingsSuggestIcon />}>
+                {suggesting ? 'Analysing data\u2026' : 'Auto-Suggest Mapping & Rules'}
+              </Button>
+              )}
+              {/* >>> AI AUTO CONFIG - NEW CODE START <<< */}
+              <Button variant="outlined" color="primary" onClick={handleAiAutoConfig}
+                disabled={aiSuggesting || suggesting || configuring || !input1Path || !input2Path}
+                startIcon={aiSuggesting ? <CircularProgress size={16} /> : <SettingsSuggestIcon />}>
+                {aiSuggesting ? 'AI analysing\u2026' : 'AI Auto Config'}
+              </Button>
+              {/* >>> AI AUTO CONFIG - NEW CODE END <<< */}
+            </Stack>
+          </Stack>
+        </Paper>
+      </Box>
+    );
+  }
+
+  // ---- Phase 2: Column Mapping & Pass Configuration (SIDE BY SIDE) ----
+  const passKeys = Object.keys(passes).map(Number).sort((a, b) => a - b);
+
+  // Compute column badges (G = in grouping, M = in matching, D = has display name)
+  const getColumnBadges = (col) => {
+    const badges = [];
+    for (const pk of passKeys) {
+      const p = passes[pk];
+      if (p.grouping.includes(col.label)) badges.push({ label: `G${pk}`, color: 'success' });
+      if (p.matching.includes(col.label)) badges.push({ label: `M${pk}`, color: 'primary' });
+      if ((p.ruleSets || []).some(rs => rs.matchColumns.includes(col.label)))
+        badges.push({ label: `R${pk}`, color: 'secondary' });
+    }
+    return badges;
+  };
+
+  return (
+    <Box sx={{ mx: 'auto', mt: 2, px: 2 }}>
+      {/* Step indicator */}
+      <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 2 }}>
+        {STEPPER_LABELS.map(label => (
+          <Step key={label}><StepLabel>{label}</StepLabel></Step>
+        ))}
+      </Stepper>
+
+      {/* Header */}
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Box>
+          <Typography variant="h4">Pass Configuration</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {recName} &mdash; {system1} vs {system2}
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1}>
+          <Button size="small" variant="outlined" startIcon={<ArrowBackIcon />}
+            onClick={() => setConfigured(false)}>
+            Back to Configure
+          </Button>
+          {!locked ? (
+            <Button size="small" variant="contained" color="success" startIcon={<LockIcon />}
+              onClick={handleLock}>
+              Lock &amp; Configure Passes
+            </Button>
+          ) : (
+            <Button size="small" variant="outlined" color="error" startIcon={<LockOpenIcon />}
+              onClick={handleUnlock}>
+              Unlock (clears passes)
+            </Button>
+          )}
+        </Stack>
+      </Stack>
+
+      {/* Side-by-side layout */}
+      <Stack direction="row" spacing={2} alignItems="flex-start">
+
+        {/* LEFT: Column Mapping Table */}
+        <Paper sx={{ p: 2, flex: locked ? '0 0 50%' : '1 1 100%', maxWidth: locked ? '50%' : '100%', overflow: 'hidden' }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+            <Typography variant="subtitle1">
+              Column Mapping ({filteredColumns.length}
+              {columnSearch ? ` / ${columns.length}` : ''} columns)
+            </Typography>
+            {!locked && (
+              <TextField size="small" placeholder="Search columns..." value={columnSearch}
+                onChange={e => setColumnSearch(e.target.value)}
+                InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+                sx={{ width: 220 }} />
+            )}
+          </Stack>
+
+          {locked && (
+            <Alert severity="info" sx={{ mb: 1, py: 0 }}>
+              Drag rows into pass zones, or Ctrl+click / Shift+click to multi-select, then use buttons.
+            </Alert>
+          )}
+
+          <TableContainer sx={{ maxHeight: 500 }}>
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>#</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Label (Join Key)</TableCell>
+                  <TableCell
+                    sx={{
+                      fontWeight: 600,
+                      cursor: locked ? 'default' : 'pointer',
+                      '&:hover': locked ? {} : { color: 'primary.main', textDecoration: 'underline' },
+                    }}
+                    onClick={() => fillDisplayNamesFromSystem('system1')}
+                    title={locked ? '' : `Click to fill display names from ${system1}`}>
+                    {system1 || 'System 1'} {!locked && '\u2193'}
+                  </TableCell>
+                  <TableCell
+                    sx={{
+                      fontWeight: 600,
+                      cursor: locked ? 'default' : 'pointer',
+                      '&:hover': locked ? {} : { color: 'primary.main', textDecoration: 'underline' },
+                    }}
+                    onClick={() => fillDisplayNamesFromSystem('system2')}
+                    title={locked ? '' : `Click to fill display names from ${system2}`}>
+                    {system2 || 'System 2'} {!locked && '\u2193'}
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Display Name</TableCell>
+                  {locked && <TableCell sx={{ fontWeight: 600, width: 80 }}>Assigned</TableCell>}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredColumns.map((col) => {
+                  const realIdx = columns.indexOf(col);
+                  const isSelected = selected.has(realIdx);
+                  return (
+                    <TableRow
+                      key={col.label}
+                      draggable={locked}
+                      onDragStart={e => onDragStart(e, realIdx)}
+                      onDragEnd={onDragEnd}
+                      onClick={e => handleRowClick(e, realIdx)}
+                      sx={{
+                        cursor: locked ? 'grab' : 'default',
+                        bgcolor: isSelected ? 'action.selected' : undefined,
+                        userSelect: locked ? 'none' : 'auto',
+                        '&:hover': locked ? { bgcolor: 'action.hover' } : {},
+                      }}
+                    >
+                      <TableCell sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>{realIdx + 1}</TableCell>
+                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{col.label}</TableCell>
+                      <TableCell>
+                        {locked ? (
+                          <Typography sx={{ fontSize: '0.82rem' }}>{col.system1_name || '-'}</Typography>
+                        ) : (
+                          <Select size="small" fullWidth value={col.system1_name || ''}
+                            onChange={e => updateSystem1Name(realIdx, e.target.value)}
+                            displayEmpty
+                            sx={{ fontSize: '0.82rem', '& .MuiSelect-select': { py: 0.5 } }}>
+                            <MenuItem value="">
+                              <em>-- Unmapped --</em>
+                            </MenuItem>
+                            {(col.system1_options || []).map(opt => (
+                              <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                            ))}
+                          </Select>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {locked ? (
+                          <Typography sx={{ fontSize: '0.82rem' }}>{col.system2_name || '-'}</Typography>
+                        ) : (
+                          <Select size="small" fullWidth value={col.system2_name || ''}
+                            onChange={e => updateSystem2Name(realIdx, e.target.value)}
+                            displayEmpty
+                            sx={{ fontSize: '0.82rem', '& .MuiSelect-select': { py: 0.5 } }}>
+                            <MenuItem value="">
+                              <em>-- Unmapped --</em>
+                            </MenuItem>
+                            {(col.system2_options || []).map(opt => (
+                              <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                            ))}
+                          </Select>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <TextField size="small" fullWidth value={col.display_name || ''}
+                          onChange={e => updateDisplayName(realIdx, e.target.value)}
+                          disabled={locked}
+                          error={!locked && !col.display_name?.trim()}
+                          sx={{ '& input': { fontSize: '0.82rem', py: 0.5 } }} />
+                      </TableCell>
+                      {locked && (
+                        <TableCell>
+                          <Stack direction="row" spacing={0.3} flexWrap="wrap">
+                            {getColumnBadges(col).map((b, bi) => (
+                              <Chip key={bi} label={b.label} size="small" color={b.color}
+                                sx={{ fontSize: '0.65rem', height: 18, minWidth: 0 }} />
+                            ))}
+                          </Stack>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+
+        {/* RIGHT: Pass Configuration (visible only when locked) */}
+        {locked && (
+          <Box sx={{ flex: '0 0 48%', maxWidth: '48%' }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+              <Typography variant="subtitle1">Pass Configuration</Typography>
+              <Button size="small" startIcon={<AddIcon />} onClick={addPass}>Add Pass</Button>
+            </Stack>
+
+            {/* Multi-select action bar */}
+            {selected.size > 0 && (
+              <Alert severity="info" sx={{ mb: 1, py: 0.5 }}>
+                <strong>{selected.size}</strong> column(s) selected &mdash;
+                {passKeys.map(pk => (
+                  <React.Fragment key={pk}>
+                    {' '}
+                    <Button size="small" variant="outlined" color="success"
+                      sx={{ mx: 0.3, minWidth: 0, py: 0, fontSize: '0.75rem' }}
+                      onClick={() => addSelectedToZone(pk, 'grouping')}>
+                      G&rarr;P{pk}
+                    </Button>
+                    <Button size="small" variant="outlined" color="primary"
+                      sx={{ mx: 0.3, minWidth: 0, py: 0, fontSize: '0.75rem' }}
+                      onClick={() => addSelectedToZone(pk, 'matching')}>
+                      M&rarr;P{pk}
+                    </Button>
+                  </React.Fragment>
+                ))}
+              </Alert>
+            )}
+
+            {/* All passes visible at once */}
+            {passKeys.map(pk => {
+              const pass = passes[pk];
+              const rsCount = (pass.ruleSets || []).length;
+              const totalMc = (pass.ruleSets || []).reduce((s, r) => s + r.matchColumns.length, 0);
+              const summaryText = rsCount > 0
+                ? `${pass.grouping.length} grouping, ${rsCount} RuleSet${rsCount > 1 ? 's' : ''}, ${totalMc} match cols`
+                : `${pass.grouping.length} grouping, ${pass.matching.length} matching`;
+              return (
+                <Paper key={pk} sx={{ p: 2, mb: 2, border: '1px solid', borderColor: 'divider' }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Pass {pk}
+                      <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        {summaryText}
+                      </Typography>
+                    </Typography>
+                    <Stack direction="row" spacing={0.5}>
+                      <Tooltip title="Apply a quick-fill template to this pass" arrow>
+                        <FormControl size="small" sx={{ minWidth: 100 }}>
+                          <Select
+                            displayEmpty
+                            value=""
+                            onChange={e => {
+                              const tpl = PASS_TEMPLATES.find(t => t.name === e.target.value);
+                              if (tpl) applyPassTemplate(pk, tpl);
+                            }}
+                            sx={{ fontSize: '0.72rem', height: 28 }}
+                          >
+                            <MenuItem value="" disabled><em>Templates...</em></MenuItem>
+                            {PASS_TEMPLATES.map(t => (
+                              <MenuItem key={t.name} value={t.name}>
+                                <Tooltip title={t.description} placement="left" arrow>
+                                  <span>{t.name}</span>
+                                </Tooltip>
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Tooltip>
+                      <Button size="small" variant="outlined" sx={{ minWidth: 0, fontSize: '0.72rem' }}
+                        onClick={() => openRuleSetPopup(pk)}>
+                        + RuleSet
+                      </Button>
+                      {passKeys.length > 1 && (
+                        <IconButton size="small" color="error" onClick={() => deletePass(pk)}
+                          title={`Delete Pass ${pk}`}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Stack>
+                  </Stack>
+
+                  {/* Grouping drop zone */}
+                  <Paper
+                    variant="outlined"
+                    className="rimme-drop-zone"
+                    data-zonetype="grouping"
+                    onDragOver={onZoneDragOver}
+                    onDragLeave={onZoneDragLeave}
+                    onDrop={e => onZoneDrop(e, pk, 'grouping')}
+                    sx={{
+                      p: 1.5, minHeight: 60, bgcolor: '#f1f8e9', mb: 1,
+                      border: '2px dashed #a5d6a7',
+                      transition: 'border-color 0.2s, background-color 0.2s',
+                    }}
+                  >
+                    <Typography variant="caption" color="success.dark" fontWeight={600}>
+                      Grouping ({pass.grouping.length})
+                    </Typography>
+                    <Box sx={{ mt: 0.5 }}>
+                      {pass.grouping.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" fontStyle="italic" fontSize="0.78rem">
+                          Drop columns here for grouping
+                        </Typography>
+                      ) : (
+                        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                          {pass.grouping.map(label => (
+                            <Chip key={label} label={getDisplayName(label)} size="small" color="success"
+                              title={label}
+                              onDelete={() => removeFromZone(pk, 'grouping', label)} sx={{ mb: 0.5 }} />
+                          ))}
+                        </Stack>
+                      )}
+                    </Box>
+                  </Paper>
+
+                  {/* Matching area - either simple matching or per-RuleSet blocks */}
+                  {rsCount === 0 ? (
+                    /* Simple matching zone (no RuleSets) */
+                    <Paper
+                      variant="outlined"
+                      className="rimme-drop-zone"
+                      data-zonetype="matching"
+                      onDragOver={onZoneDragOver}
+                      onDragLeave={onZoneDragLeave}
+                      onDrop={e => onZoneDrop(e, pk, 'matching')}
+                      sx={{
+                        p: 1.5, minHeight: 60, bgcolor: '#e3f2fd',
+                        border: '2px dashed #90caf9',
+                        transition: 'border-color 0.2s, background-color 0.2s',
+                      }}
+                    >
+                      <Typography variant="caption" color="primary.dark" fontWeight={600}>
+                        Matching ({pass.matching.length})
+                      </Typography>
+                      <Box sx={{ mt: 0.5 }}>
+                        {pass.matching.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary" fontStyle="italic" fontSize="0.78rem">
+                            Drop columns here for matching
+                          </Typography>
+                        ) : (
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                            {pass.matching.map(label => (
+                              <Chip key={label} label={getDisplayName(label)} size="small" color="primary"
+                                title={label}
+                                onDelete={() => removeFromZone(pk, 'matching', label)} sx={{ mb: 0.5 }} />
+                            ))}
+                          </Stack>
+                        )}
+                      </Box>
+                    </Paper>
+                  ) : (
+                    /* Per-RuleSet matching blocks */
+                    <Box>
+                      <Typography variant="caption" color="primary.dark" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>
+                        Matching &mdash; {rsCount} RuleSet{rsCount > 1 ? 's' : ''}
+                      </Typography>
+                      {pass.ruleSets.map(rs => (
+                        <Paper key={rs.id} variant="outlined" sx={{ mb: 1, border: '1px solid #90caf9', overflow: 'hidden' }}>
+                          {/* RuleSet header bar */}
+                          <Box sx={{
+                            display: 'flex', alignItems: 'center', px: 1.5, py: 0.5,
+                            bgcolor: '#e3f2fd', borderBottom: '1px solid #90caf9', cursor: 'pointer',
+                          }}
+                            onClick={() => openRuleSetPopup(pk, rs.id)}
+                          >
+                            <Typography variant="body2" fontWeight={600} sx={{ flex: 1 }}>
+                              {rs.name}
+                            </Typography>
+                            <Chip label={`${rs.rules.length} rule${rs.rules.length !== 1 ? 's' : ''}`}
+                              size="small" variant="outlined" sx={{ mr: 0.5, fontSize: '0.7rem', height: 20 }} />
+                            <Typography variant="caption" color="text.secondary" sx={{ mr: 1, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {buildRulesSummary(rs.rules)}
+                            </Typography>
+                            <IconButton size="small" onClick={e => { e.stopPropagation(); openRuleSetPopup(pk, rs.id); }}
+                              title="Edit RuleSet"><EditIcon fontSize="small" /></IconButton>
+                            <IconButton size="small" color="error" onClick={e => { e.stopPropagation(); deleteRuleSet(pk, rs.id); }}
+                              title="Delete RuleSet"><DeleteIcon fontSize="small" /></IconButton>
+                          </Box>
+                          {/* RuleSet matching drop zone */}
+                          <Paper
+                            className="rimme-drop-zone"
+                            data-zonetype="ruleset-matching"
+                            onDragOver={onZoneDragOver}
+                            onDragLeave={onZoneDragLeave}
+                            onDrop={e => onZoneDrop(e, pk, 'ruleset-matching', rs.id)}
+                            sx={{
+                              p: 1, minHeight: 50, bgcolor: '#e8eaf6',
+                              border: '2px dashed #9fa8da', borderTop: 'none',
+                              transition: 'border-color 0.2s, background-color 0.2s',
+                            }}
+                          >
+                            {rs.matchColumns.length === 0 ? (
+                              <Typography variant="body2" color="text.secondary" fontStyle="italic" fontSize="0.75rem">
+                                Drop match columns for {rs.name}
+                              </Typography>
+                            ) : (
+                              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                                {rs.matchColumns.map(label => (
+                                  <Chip key={label} label={getDisplayName(label)} size="small" color="primary"
+                                    title={label}
+                                    onDelete={() => removeFromRsZone(pk, rs.id, label)} sx={{ mb: 0.5 }} />
+                                ))}
+                              </Stack>
+                            )}
+                          </Paper>
+                        </Paper>
+                      ))}
+                    </Box>
+                  )}
+                </Paper>
+              );
+            })}
+
+            {/* Generate Button */}
+            <Button variant="contained" size="large" fullWidth onClick={handleGenerate} disabled={generating}
+              startIcon={generating ? <CircularProgress size={16} color="inherit" /> : null}
+              sx={{ mt: 1 }}>
+              Complete Configuration
+            </Button>
+
+            {/* View Past Results - always available so users can browse existing outputs */}
+            <Button variant="outlined" size="small" fullWidth color="info"
+              startIcon={<VisibilityIcon />} onClick={openOutputViewer}
+              sx={{ mt: 1 }}>
+              View Results
+            </Button>
+
+            {/* Save Config - only in Configure Passes section */}
+            <Button variant="outlined" size="small" fullWidth startIcon={<SaveIcon />}
+              onClick={saveConfig} sx={{ mt: 1 }}>
+              Save Column &amp; Pass Config
+            </Button>
+          </Box>
+        )}
+      </Stack>
+
+      {/* RuleSet Popup Dialog */}
+      <Dialog open={rsPopupOpen} onClose={closeRuleSetPopup} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {rsPopupEditId ? `Edit: ${rsPopupName}` : 'Add RuleSet'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <TextField label="RuleSet Name" size="small" fullWidth value={rsPopupName}
+            onChange={e => setRsPopupName(e.target.value)} sx={{ mb: 2 }} />
+
+          {/* Rules list */}
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+            Rules ({rsPopupRules.length})
+          </Typography>
+          {rsPopupRules.length === 0 ? (
+            <Alert severity="info" sx={{ py: 0.5, mb: 1 }}>No rules yet. Add rules below.</Alert>
+          ) : (
+            <Box sx={{ mb: 2, maxHeight: 250, overflow: 'auto' }}>
+              {rsPopupRules.map((rule, idx) => {
+                const def = RULE_DEFINITIONS[rule.ruleType];
+                if (!def) return null;
+                const catColors = { Comparison: '#1976d2', Filter: '#ed6c02', Constraint: '#2e7d32', Advanced: '#9c27b0' };
+                return (
+                  <Paper key={idx} variant="outlined" sx={{
+                    p: 1, mb: 0.5, display: 'flex', alignItems: 'center',
+                    ...(rsEditingRuleIdx === idx ? { borderColor: 'primary.main', borderWidth: 2 } : {}),
+                  }}>
+                    <Chip label={def.label} size="small" sx={{
+                      bgcolor: catColors[def.category] || '#666', color: '#fff', mr: 1, fontSize: '0.72rem',
+                    }} />
+                    <Typography variant="caption" color="text.secondary" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {buildRuleParamsSummary(rule)}
+                    </Typography>
+                    <IconButton size="small" onClick={() => editRuleInPopup(idx)} title="Edit">
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" color="error" onClick={() => removeRuleFromPopup(idx)} title="Delete">
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Paper>
+                );
+              })}
+            </Box>
+          )}
+
+          <Divider sx={{ my: 1 }} />
+
+          {/* Rule type selector */}
+          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+            {rsEditingRuleIdx !== null ? 'Edit Rule' : 'Add Rule'}
+          </Typography>
+          <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+            <InputLabel>Rule Type</InputLabel>
+            <Select value={rsRuleType} label="Rule Type"
+              onChange={e => { setRsRuleType(e.target.value); setRsRuleParams({}); }}>
+              <MenuItem value="">-- Select Rule Type --</MenuItem>
+              {RULE_CATEGORIES.map(cat => {
+                const rulesInCat = Object.entries(RULE_DEFINITIONS).filter(([, d]) => d.category === cat);
+                if (rulesInCat.length === 0) return null;
+                return [
+                  <ListItemText key={`cat-${cat}`} sx={{ px: 2, py: 0.5, fontWeight: 700, color: 'text.secondary', fontSize: '0.8rem' }}>
+                    {cat}
+                  </ListItemText>,
+                  ...rulesInCat.map(([key, def]) => (
+                    <MenuItem key={key} value={key} sx={{ pl: 3 }}>
+                      {def.label}
+                    </MenuItem>
+                  )),
+                ];
+              })}
+            </Select>
+          </FormControl>
+
+          {/* Dynamic param fields */}
+          {rsRuleType && RULE_DEFINITIONS[rsRuleType] && (
+            <Box sx={{ mb: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                {RULE_DEFINITIONS[rsRuleType].description}
+              </Typography>
+              <Stack spacing={1.5}>
+                {RULE_DEFINITIONS[rsRuleType].params.map(p => (
+                  <Box key={p.name}>
+                    <Typography variant="caption" fontWeight={600}>
+                      {p.label}{p.mandatory ? ' *' : ''}
+                    </Typography>
+                    {renderRuleParamField(p, rsRuleParams, (name, val) =>
+                      setRsRuleParams(prev => ({ ...prev, [name]: val }))
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+              <Button size="small" variant="contained" sx={{ mt: 1.5 }} onClick={confirmAddRule}>
+                {rsEditingRuleIdx !== null ? 'Update Rule' : 'Add Rule'}
+              </Button>
+              {rsEditingRuleIdx !== null && (
+                <Button size="small" sx={{ mt: 1.5, ml: 1 }} onClick={() => {
+                  setRsEditingRuleIdx(null); setRsRuleType(''); setRsRuleParams({});
+                }}>
+                  Cancel Edit
+                </Button>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeRuleSetPopup}>Cancel</Button>
+          <Button variant="contained" onClick={saveRuleSet}>Save RuleSet</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* XML Result Dialog */}
+      <Dialog open={xmlDialogOpen} onClose={() => setXmlDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Generated RIMME XML &mdash; {recName}
+        </DialogTitle>
+        <DialogContent>
+          <Stack direction="row" spacing={1} sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
+            <Button size="small" variant="outlined" startIcon={<ContentCopyIcon />} onClick={copyXml}>
+              Copy
+            </Button>
+            <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={downloadXml}>
+              Download XML
+            </Button>
+            <Button size="small" variant="contained" startIcon={<DownloadIcon />} onClick={downloadAllThree}>
+              Download All Three
+            </Button>
+            <Button size="small" variant="contained" color="success"
+              onClick={handleInitiateMatching} disabled={initiating}
+              endIcon={initiating ? <CircularProgress size={14} color="inherit" /> : null}>
+              {initiating ? 'Starting...' : 'INITIATE MATCHING'}
+            </Button>
+            <Button size="small" variant="outlined" color="info"
+              startIcon={<VisibilityIcon />} onClick={openOutputViewer}>
+              View Results
+            </Button>
+          </Stack>
+
+          {/* RIMME status indicator */}
+          {rimmeStatus && (
+            <Alert
+              severity={rimmeStatus.status === 'completed' ? 'success' : rimmeStatus.status === 'running' ? 'info' : 'warning'}
+              sx={{ mb: 1, py: 0.5 }}
+              action={rimmeStatus.status === 'running' ? <CircularProgress size={16} /> : null}
+              onClose={() => { setRimmeStatus(null); stopPolling(); }}
+            >
+              <strong>RIMME {rimmeStatus.status}:</strong> {rimmeStatus.message}
+            </Alert>
+          )}
+
+          {initiateResult && (
+            <Alert severity={initiateResult.severity} sx={{ mb: 1, whiteSpace: 'pre-wrap' }}
+              onClose={() => setInitiateResult(null)}>
+              {initiateResult.message}
+            </Alert>
+          )}
+          <Alert severity="info" sx={{ py: 0.5, mb: 1 }}>
+            {"\u201C"}Download All Three{"\u201D"} downloads the XML plus both source files with headers replaced by mapped labels.
+          </Alert>
+          <SyntaxHighlighter
+            language="xml"
+            style={atomOneDark}
+            customStyle={{
+              borderRadius: 6,
+              maxHeight: 500,
+              fontSize: '0.8rem',
+              margin: 0,
+            }}
+            wrapLongLines
+          >
+            {xmlResult || ''}
+          </SyntaxHighlighter>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setXmlDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Output Viewer Dialog */}
+      <Dialog open={outputDialogOpen} onClose={() => setOutputDialogOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>
+          RIMME Match Output &mdash; {recName}
+        </DialogTitle>
+        <DialogContent>
+          <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
+            <FormControl size="small" sx={{ minWidth: 350 }}>
+              <InputLabel>Select Output File</InputLabel>
+              <Select
+                value={selectedOutput}
+                label="Select Output File"
+                onChange={e => viewOutputFile(e.target.value)}
+              >
+                {outputFiles.map(f => (
+                  <MenuItem key={f.filename} value={f.filename}>
+                    {f.filename} ({f.size_display}, {f.datetime_str})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <IconButton onClick={loadOutputFiles} title="Refresh file list">
+              <RefreshIcon />
+            </IconButton>
+            {selectedOutput && (
+              <>
+                <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
+                  onClick={() => downloadOutputFile(selectedOutput)}>
+                  Download XLSX
+                </Button>
+                <Button size="small" variant="contained" color="secondary"
+                  onClick={handleSendBreaks}
+                  disabled={breaksLoading}
+                  startIcon={breaksLoading ? <CircularProgress size={16} color="inherit" /> : <ArrowForwardIcon />}>
+                  {breaksLoading ? 'Analyzing?' : 'Send Breaks to AI'}
+                </Button>
+              </>
+            )}
+          </Stack>
+
+          {(outputLoading || breaksLoading) && <LinearProgress sx={{ mb: 2 }} />}
+
+          {/* Top-level tabs: Match Output vs Breaks Analysis */}
+          {(outputSheets || breaksSheets) && (
+            <Tabs value={outputViewTab} onChange={(_, v) => setOutputViewTab(v)}
+              sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+              <Tab label="Match Output" value={0} />
+              <Tab label="Breaks Analysis" value={1} disabled={!breaksSheets} />
+            </Tabs>
+          )}
+
+          {/* Tab 0: Match Output (original RIMME output) */}
+          {outputViewTab === 0 && outputSheets && (
+            <>
+              <Tabs value={activeSheet} onChange={(_, v) => setActiveSheet(v)}
+                variant="scrollable" scrollButtons="auto" sx={{ mb: 1, borderBottom: 1, borderColor: 'divider' }}>
+                {Object.keys(outputSheets).map((name, i) => (
+                  <Tab key={name} label={
+                    <Badge badgeContent={outputSheets[name].row_count} color="primary" max={99999}>
+                      <span style={{ paddingRight: 12 }}>{name}</span>
+                    </Badge>
+                  } value={i} />
+                ))}
+              </Tabs>
+              {Object.entries(outputSheets).map(([sheetName, sheet], idx) => {
+                if (idx !== activeSheet) return null;
+                const hColors = sheet.header_colors || [];
+                const dgColumns = sheet.columns.map((col, ci) => ({
+                  field: `col_${ci}`,
+                  headerName: col,
+                  flex: 1,
+                  minWidth: 120,
+                  renderHeader: (params) => (
+                    <Box sx={{
+                      fontWeight: 600, fontSize: '0.8rem', width: '100%', px: 0.5,
+                      ...(hColors[ci] ? { bgcolor: hColors[ci], color: '#000', borderRadius: 0.5, py: 0.25 } : {}),
+                    }}>
+                      {params.colDef.headerName}
+                    </Box>
+                  ),
+                }));
+                const dgRows = sheet.rows.map((row, ri) => {
+                  const obj = { id: ri };
+                  row.forEach((val, ci) => { obj[`col_${ci}`] = val; });
+                  return obj;
+                });
+                return (
+                  <Box key={sheetName} sx={{ height: 450 }}>
+                    <DataGrid
+                      rows={dgRows}
+                      columns={dgColumns}
+                      density="compact"
+                      pageSizeOptions={[25, 50, 100]}
+                      initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+                      disableRowSelectionOnClick
+                      slots={{
+                        toolbar: () => (
+                          <Box sx={{ px: 1, py: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              {sheetName} &mdash; {sheet.row_count} rows, {sheet.columns.length} columns
+                            </Typography>
+                          </Box>
+                        ),
+                      }}
+                    />
+                  </Box>
+                );
+              })}
+            </>
+          )}
+
+          {/* Tab 1: Breaks Analysis */}
+          {outputViewTab === 1 && breaksSheets && (
+            <>
+              <Tabs value={breaksActiveSheet} onChange={(_, v) => setBreaksActiveSheet(v)}
+                variant="scrollable" scrollButtons="auto" sx={{ mb: 1, borderBottom: 1, borderColor: 'divider' }}>
+                {Object.keys(breaksSheets).map((name, i) => (
+                  <Tab key={name} label={
+                    <Badge badgeContent={breaksSheets[name].row_count} color="secondary" max={99999}>
+                      <span style={{ paddingRight: 12 }}>{name}</span>
+                    </Badge>
+                  } value={i} />
+                ))}
+              </Tabs>
+              {Object.entries(breaksSheets).map(([sheetName, sheet], idx) => {
+                if (idx !== breaksActiveSheet) return null;
+                const hColors = sheet.header_colors || [];
+                const dgColumns = sheet.columns.map((col, ci) => ({
+                  field: `col_${ci}`,
+                  headerName: col,
+                  flex: 1,
+                  minWidth: 120,
+                  renderHeader: (params) => (
+                    <Box sx={{
+                      fontWeight: 600, fontSize: '0.8rem', width: '100%', px: 0.5,
+                      ...(hColors[ci] ? { bgcolor: hColors[ci], color: '#000', borderRadius: 0.5, py: 0.25 } : {}),
+                    }}>
+                      {params.colDef.headerName}
+                    </Box>
+                  ),
+                }));
+                const dgRows = sheet.rows.map((row, ri) => {
+                  const obj = { id: ri };
+                  row.forEach((val, ci) => { obj[`col_${ci}`] = val; });
+                  return obj;
+                });
+                return (
+                  <Box key={sheetName} sx={{ height: 450 }}>
+                    <DataGrid
+                      rows={dgRows}
+                      columns={dgColumns}
+                      density="compact"
+                      pageSizeOptions={[25, 50, 100]}
+                      initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+                      disableRowSelectionOnClick
+                      slots={{
+                        toolbar: () => (
+                          <Box sx={{ px: 1, py: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              {sheetName} &mdash; {sheet.row_count} rows, {sheet.columns.length} columns
+                            </Typography>
+                          </Box>
+                        ),
+                      }}
+                    />
+                  </Box>
+                );
+              })}
+            </>
+          )}
+
+          {outputViewTab === 1 && !breaksSheets && !breaksLoading && (
+            <Alert severity="info">Click &ldquo;Send Breaks to AI&rdquo; to analyze breaks from the selected output.</Alert>
+          )}
+
+          {outputViewTab === 0 && !outputSheets && !outputLoading && outputFiles.length === 0 && (
+            <Alert severity="info">No output files found. Run RIMME matching first.</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOutputDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
