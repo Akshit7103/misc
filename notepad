@@ -1,8 +1,9 @@
-  - One to check: does the WITH Now Assist flow work in background/batch, or only interactively? The native MID routing
-  only applies in interactive sessions — in a flow it goes direct and can't reach Chinou. We solved it with a small
-  loopback bridge (connection → instance endpoint → MID-pinned REST → Chinou). Worth reflecting in the Routing row.
-  - Verify auth: we found the NASK path needed Basic auth (GCD account) — the Tea Token was rejected; the deck shows
-  both flows using the Tea Token.
-  - Inputs: add Excel/XLSX (the main attachment type) alongside PDFs/docs.
-  - Make the comparison a decision: add licensing (Now Assist needs a licence, direct REST doesn't), governance, and
-  portability — and a one-line recommendation of when to use which.
+  Hi Paramjeet,
+
+  Confirming the Compare & Match use case (Reg ID AIUC00336) is now compliant:
+
+  - The Registration ID is included in every Chinou API call — implemented at our shared client layer, so it covers all our
+  workflows in one place.
+  - Sent in the request body (LLMRequest.parameters), as the Registry docs require — we found a query parameter is ignored.
+  - Validated against the live API: calls return successfully and the "Include the Registration ID" warning no longer appears, so
+  usage now attributes to AIUC00336.
