@@ -1,9 +1,7 @@
-  Hi Paramjeet,
+ Hi Paramjeet,
 
-  Confirming the Compare & Match use case (Reg ID AIUC00336) is now compliant:
+  Quick update — as requested, I've switched the Registration ID from AIUC00336 to AIUC00337 (the AI field-extraction capability,
+  which is where all our Chinou usage actually sits).
 
-  - The Registration ID is included in every Chinou API call — implemented at our shared client layer, so it covers all our
-  workflows in one place.
-  - Sent in the request body (LLMRequest.parameters), as the Registry docs require — we found a query parameter is ignored.
-  - Validated against the live API: calls return successfully and the "Include the Registration ID" warning no longer appears, so
-  usage now attributes to AIUC00336.
+  Re-validated against the live API: calls succeed, no "Include the Registration ID" warning, and no validation error — so usage
+  now attributes to AIUC00337.
