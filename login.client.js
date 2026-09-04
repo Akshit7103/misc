@@ -4,7 +4,7 @@
  * (view_form.login), so it is a real, working login (not a mock). On success it
  * redirects straight to the dashboard (/nfotcbsm?id=bsm_analystdashboard).
  */
-function controller($scope, $http, $window, spUtil) {
+function ($scope, $http, $window, spUtil) {
     var c = this;
     c.username = '';
     c.password = '';
