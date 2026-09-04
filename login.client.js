@@ -1,10 +1,4 @@
-/**
- * OTC console login — custom branded sign-in for the /nfotcbsm Service Portal.
- * Authenticates through the same endpoint the OOTB Service Portal login widget uses
- * (view_form.login), so it is a real, working login (not a mock). On success it
- * redirects straight to the dashboard (/nfotcbsm?id=bsm_analystdashboard).
- */
-function ($scope, $http, $window, spUtil) {
+api.controller = function ($scope, $http, $window, spUtil) {
     var c = this;
     c.username = '';
     c.password = '';
@@ -13,9 +7,7 @@ function ($scope, $http, $window, spUtil) {
 
     var HOME = '/nfotcbsm?id=bsm_work_drivers';
 
-    // SSO short-circuit: if the platform already authenticated this visitor (e.g. SSO on
-    // bsmdev), skip the branded sign-in form and go straight to the landing. The server
-    // (login.server.js) sets c.data.authed for a real, non-guest session.
+    // SSO short-circuit: if already authenticated (server sets c.data.authed), skip the form.
     if (c.data && c.data.authed) {
         $window.location = c.data.redirect || HOME;
         return;
@@ -66,4 +58,4 @@ function ($scope, $http, $window, spUtil) {
             c.message = 'Sign-in failed. Please try again.';
         });
     };
-}
+};
