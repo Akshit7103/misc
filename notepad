@@ -1,7 +1,0 @@
- Hi Paramjeet,
-
-  Quick update — as requested, I've switched the Registration ID from AIUC00336 to AIUC00337 (the AI field-extraction capability,
-  which is where all our Chinou usage actually sits).
-
-  Re-validated against the live API: calls succeed, no "Include the Registration ID" warning, and no validation error — so usage
-  now attributes to AIUC00337.
